@@ -16,7 +16,7 @@
 
 @layer components {
   .btn {
-    @apply px-4 py-2 rounded-xl font-semibold transition-all duration-200 inline-flex items-center justify-center gap-2;
+    @apply px-4 py-2 rounded-xl font-semibold transition-all duration-200 inline-flex items-center justify-center gap-2 text-sm sm:text-base;
   }
 
   .btn-primary {
@@ -32,11 +32,11 @@
   }
 
   .card {
-    @apply bg-white rounded-2xl p-6 shadow-sm;
+    @apply bg-white rounded-2xl p-4 sm:p-6 shadow-sm;
   }
 
   .input {
-    @apply w-full px-4 py-3 rounded-xl border border-gray-200 focus:border-primary-400 focus:ring-2 focus:ring-primary-100 outline-none transition-all;
+    @apply w-full px-3 sm:px-4 py-2.5 sm:py-3 rounded-xl border border-gray-200 focus:border-primary-400 focus:ring-2 focus:ring-primary-100 outline-none transition-all text-sm sm:text-base;
   }
 
   .badge {
@@ -49,6 +49,21 @@
 
   .badge-expense {
     @apply bg-expense-light text-expense;
+  }
+}
+
+/* Mobile responsive utilities */
+@layer utilities {
+  .text-responsive-xl {
+    @apply text-xl sm:text-2xl;
+  }
+
+  .text-responsive-2xl {
+    @apply text-2xl sm:text-3xl;
+  }
+
+  .text-responsive-3xl {
+    @apply text-2xl sm:text-4xl;
   }
 }
 

@@ -64,25 +64,26 @@ export default function SpendingChart() {
 
   return (
     <div className="card">
-      <h3 className="text-lg font-semibold text-gray-900 mb-4">Tren 30 Hari Terakhir</h3>
-      <div className="h-64">
+      <h3 className="text-sm sm:text-lg font-semibold text-gray-900 mb-3 sm:mb-4">Tren 30 Hari Terakhir</h3>
+      <div className="h-48 sm:h-64">
         <ResponsiveContainer width="100%" height="100%">
-          <LineChart data={data} margin={{ top: 5, right: 20, left: 0, bottom: 5 }}>
+          <LineChart data={data} margin={{ top: 5, right: 10, left: -10, bottom: 5 }}>
             <CartesianGrid strokeDasharray="3 3" stroke="#E4E4E7" />
             <XAxis
               dataKey="date"
               tickFormatter={(date) => formatDateShort(date)}
-              tick={{ fontSize: 12, fill: '#71717A' }}
+              tick={{ fontSize: 10, fill: '#71717A' }}
               interval="preserveStartEnd"
             />
             <YAxis
               tickFormatter={(value) => `${(value / 1000).toFixed(0)}k`}
-              tick={{ fontSize: 12, fill: '#71717A' }}
-              width={50}
+              tick={{ fontSize: 10, fill: '#71717A' }}
+              width={40}
             />
             <Tooltip content={<CustomTooltip />} />
             <Legend
               formatter={(value) => (value === 'income' ? 'Pemasukan' : 'Pengeluaran')}
+              wrapperStyle={{ fontSize: '12px' }}
             />
             <Line
               type="monotone"

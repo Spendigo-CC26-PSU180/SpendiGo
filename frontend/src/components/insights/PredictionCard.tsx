@@ -46,24 +46,24 @@ export default function PredictionCard() {
 
   return (
     <div className="relative p-[2px] rounded-2xl bg-gradient-to-br from-primary-500 to-accent-500">
-      <div className="bg-white rounded-2xl p-6 relative overflow-hidden">
+      <div className="bg-white rounded-2xl p-4 sm:p-6 relative overflow-hidden">
         {/* Spen mascot background */}
         <img
           src="/spen.png"
           alt="Spen AI"
-          className="absolute -right-8 -top-4 w-32 h-32 opacity-10"
+          className="absolute -right-8 -top-4 w-24 sm:w-32 h-24 sm:h-32 opacity-10"
         />
 
-        <div className="flex items-center gap-3 mb-4 relative">
-          <img src="/spen.png" alt="Spen" className="w-10 h-10" />
+        <div className="flex items-center gap-2 sm:gap-3 mb-3 sm:mb-4 relative">
+          <img src="/spen.png" alt="Spen" className="w-8 h-8 sm:w-10 sm:h-10" />
           <div>
-            <span className="text-sm font-medium text-gray-900 block">Spen bilang...</span>
+            <span className="text-xs sm:text-sm font-medium text-gray-900 block">Spen bilang...</span>
             <span className="text-xs text-gray-500">Prediksi Bulan Depan</span>
           </div>
         </div>
 
-        <div className="mb-6">
-          <p className="text-3xl font-bold text-gray-900 mb-2">{formatRupiah(prediction.predicted_expense)}</p>
+        <div className="mb-4 sm:mb-6">
+          <p className="text-xl sm:text-3xl font-bold text-gray-900 mb-2">{formatRupiah(prediction.predicted_expense)}</p>
           <div className="flex items-center gap-3">
             <div className="flex-1 h-2 bg-gray-100 rounded-full overflow-hidden">
               <div
