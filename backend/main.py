@@ -30,6 +30,7 @@ cors_origins = [
     "http://localhost:3000",
     "http://127.0.0.1:4321",
     "http://127.0.0.1:3000",
+    "https://spendigo-frontend.up.railway.app",  # Railway frontend
 ]
 
 # Add frontend URL from environment (Railway)
