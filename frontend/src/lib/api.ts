@@ -84,6 +84,10 @@ export const analyticsApi = {
 
   getTrend: (days?: number) =>
     api.get('/analytics/trend', { params: { days } }),
+
+  getSpendingDNA: () => api.get('/analytics/spending-dna'),
+
+  getWeeklyWrapped: () => api.get('/analytics/weekly-wrapped'),
 };
 
 // Predict API
@@ -91,6 +95,7 @@ export const predictApi = {
   getNextMonth: () => api.get('/predict/next-month'),
   getInsights: () => api.get('/predict/insights'),
   getHealthScore: () => api.get('/predict/health-score'),
+  getBrokeDate: () => api.get('/predict/broke-date'),
 };
 
 // Chat API
@@ -118,6 +123,21 @@ export interface ChatResponse {
 export const chatApi = {
   send: (message: string, history: ChatMessage[] = []) =>
     api.post<ChatResponse>('/chat', { message, history }),
+};
+
+// Budget Goals API
+export const budgetApi = {
+  getGoals: (month?: string) =>
+    api.get('/budget', { params: { month } }),
+
+  createGoal: (data: { category: string; budget_limit: number; month?: string }) =>
+    api.post('/budget', data),
+
+  updateGoal: (id: string, data: { budget_limit: number }) =>
+    api.put(`/budget/${id}`, data),
+
+  deleteGoal: (id: string) =>
+    api.delete(`/budget/${id}`),
 };
 
 export default api;

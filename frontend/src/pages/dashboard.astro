@@ -4,6 +4,7 @@ import SummaryCards from '../components/dashboard/SummaryCards';
 import SpendingChart from '../components/dashboard/SpendingChart';
 import CategoryDonut from '../components/dashboard/CategoryDonut';
 import RecentTransactions from '../components/dashboard/RecentTransactions';
+import WeeklyWrapped from '../components/dashboard/WeeklyWrapped';
 import QuickAddButton from '../components/dashboard/QuickAddButton';
 import SpenFloatingButton from '../components/chat/SpenFloatingButton';
 ---
@@ -19,6 +20,11 @@ import SpenFloatingButton from '../components/chat/SpenFloatingButton';
     <!-- Summary Cards -->
     <div class="mb-4 sm:mb-6">
       <SummaryCards client:load />
+    </div>
+
+    <!-- Weekly Wrapped -->
+    <div class="mb-4 sm:mb-6">
+      <WeeklyWrapped client:load />
     </div>
 
     <!-- Charts Grid -->

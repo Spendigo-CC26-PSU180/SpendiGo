@@ -42,6 +42,101 @@ class HealthScore(BaseModel):
     checks: List[dict]
 
 
+class BrokeDateResponse(BaseModel):
+    broke_date: str | None
+    days_left: int | None
+    daily_budget: int
+    current_balance: int
+    status: str  # safe, warning, danger
+    message: str
+
+
+@router.get("/broke-date", response_model=BrokeDateResponse)
+def get_broke_date(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Predict when user will run out of money based on spending patterns.
+    """
+    today = date.today()
+    this_month_start = date(today.year, today.month, 1)
+
+    # Get this month's income
+    income = db.query(func.coalesce(func.sum(Transaction.amount), 0)).filter(
+        Transaction.user_id == current_user.id,
+        Transaction.date >= this_month_start,
+        Transaction.type == "income"
+    ).scalar()
+
+    # Get this month's expense
+    expense = db.query(func.coalesce(func.sum(Transaction.amount), 0)).filter(
+        Transaction.user_id == current_user.id,
+        Transaction.date >= this_month_start,
+        Transaction.type == "expense"
+    ).scalar()
+
+    current_balance = income - expense
+
+    # Calculate average daily expense from last 14 days
+    two_weeks_ago = today - timedelta(days=14)
+    daily_expenses = db.query(
+        Transaction.date,
+        func.sum(Transaction.amount).label("total")
+    ).filter(
+        Transaction.user_id == current_user.id,
+        Transaction.date >= two_weeks_ago,
+        Transaction.type == "expense"
+    ).group_by(Transaction.date).all()
+
+    if daily_expenses:
+        avg_daily_expense = sum(d.total for d in daily_expenses) / 14
+    else:
+        avg_daily_expense = expense / max(today.day, 1)
+
+    daily_budget = int(avg_daily_expense) if avg_daily_expense > 0 else 0
+
+    # Calculate days until broke
+    if current_balance <= 0:
+        days_left = 0
+        broke_date = today.isoformat()
+        status = "danger"
+        message = "Saldo kamu sudah minus! Kurangi pengeluaran sekarang."
+    elif avg_daily_expense <= 0:
+        days_left = None
+        broke_date = None
+        status = "safe"
+        message = "Belum cukup data untuk prediksi."
+    else:
+        days_left = int(current_balance / avg_daily_expense)
+        if days_left > 365:
+            broke_date = None
+            status = "safe"
+            message = "Keuangan kamu aman untuk waktu yang lama!"
+        else:
+            broke_date_obj = today + timedelta(days=days_left)
+            broke_date = broke_date_obj.isoformat()
+
+            if days_left <= 7:
+                status = "danger"
+                message = f"Hati-hati! Saldo bisa habis dalam {days_left} hari."
+            elif days_left <= 14:
+                status = "warning"
+                message = f"Perhatikan pengeluaranmu. Saldo cukup untuk {days_left} hari."
+            else:
+                status = "safe"
+                message = f"Keuangan cukup aman untuk {days_left} hari ke depan."
+
+    return BrokeDateResponse(
+        broke_date=broke_date,
+        days_left=days_left,
+        daily_budget=daily_budget,
+        current_balance=current_balance,
+        status=status,
+        message=message
+    )
+
+
 @router.get("/next-month", response_model=PredictionResponse)
 def predict_next_month(
     db: Session = Depends(get_db),

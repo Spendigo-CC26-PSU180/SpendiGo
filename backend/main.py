@@ -3,7 +3,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from database import engine, Base
-from routers import auth_router, transactions_router, analytics_router, predict_router, chat_router
+from routers import auth_router, transactions_router, analytics_router, predict_router, chat_router, budget_router
 from core.config import get_settings
 
 settings = get_settings()
@@ -39,6 +39,7 @@ app.include_router(transactions_router)
 app.include_router(analytics_router)
 app.include_router(predict_router)
 app.include_router(chat_router)
+app.include_router(budget_router)
 
 
 @app.get("/")

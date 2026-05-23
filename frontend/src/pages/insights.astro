@@ -4,6 +4,9 @@ import PredictionCard from '../components/insights/PredictionCard';
 import InsightCards from '../components/insights/InsightCards';
 import HealthScore from '../components/insights/HealthScore';
 import CategoryComparison from '../components/insights/CategoryComparison';
+import SpendingDNA from '../components/insights/SpendingDNA';
+import BrokeDate from '../components/insights/BrokeDate';
+import BudgetGoals from '../components/insights/BudgetGoals';
 ---
 
 <Layout title="Insights">
@@ -17,21 +20,27 @@ import CategoryComparison from '../components/insights/CategoryComparison';
       </div>
     </div>
 
-    <!-- Main Grid -->
+    <!-- Row 1: Spending DNA + Broke Date -->
     <div class="grid lg:grid-cols-2 gap-4 sm:gap-6 mb-4 sm:mb-6">
-      <!-- Prediction Card - Hero -->
-      <PredictionCard client:load />
+      <SpendingDNA client:load />
+      <BrokeDate client:load />
+    </div>
 
-      <!-- Health Score -->
+    <!-- Row 2: Prediction + Health Score -->
+    <div class="grid lg:grid-cols-2 gap-4 sm:gap-6 mb-4 sm:mb-6">
+      <PredictionCard client:load />
       <HealthScore client:load />
     </div>
 
     <!-- Insights Cards -->
-    <div class="mb-6">
+    <div class="mb-4 sm:mb-6">
       <InsightCards client:load />
     </div>
 
-    <!-- Category Comparison -->
-    <CategoryComparison client:load />
+    <!-- Row 3: Budget Goals + Category Comparison -->
+    <div class="grid lg:grid-cols-2 gap-4 sm:gap-6">
+      <BudgetGoals client:load />
+      <CategoryComparison client:load />
+    </div>
   </div>
 </Layout>

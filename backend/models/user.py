@@ -19,3 +19,4 @@ class User(Base):
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
     transactions = relationship("Transaction", back_populates="user", cascade="all, delete-orphan")
+    budget_goals = relationship("BudgetGoal", back_populates="user", cascade="all, delete-orphan")
