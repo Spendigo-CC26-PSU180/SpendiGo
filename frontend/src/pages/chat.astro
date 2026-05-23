@@ -1,0 +1,10 @@
+---
+import Layout from '../components/layout/Layout.astro';
+import SpenChat from '../components/chat/SpenChat';
+---
+
+<Layout title="Chat dengan Spen">
+  <div class="h-[calc(100vh-5rem)] lg:h-screen">
+    <SpenChat client:load />
+  </div>
+</Layout>

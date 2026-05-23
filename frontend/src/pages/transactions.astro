@@ -1,0 +1,10 @@
+---
+import Layout from '../components/layout/Layout.astro';
+import TransactionsPage from '../components/transactions/TransactionsPage';
+import SpenFloatingButton from '../components/chat/SpenFloatingButton';
+---
+
+<Layout title="Transaksi">
+  <TransactionsPage client:load />
+  <SpenFloatingButton client:load />
+</Layout>
