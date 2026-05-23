@@ -24,26 +24,11 @@ app = FastAPI(
     version="1.0.0"
 )
 
-# CORS origins
-cors_origins = [
-    "http://localhost:4321",  # Astro dev server
-    "http://localhost:3000",
-    "http://127.0.0.1:4321",
-    "http://127.0.0.1:3000",
-    "https://spendigo-frontend.up.railway.app",  # Railway frontend
-]
-
-# Add frontend URL from environment (Railway)
-if settings.FRONTEND_URL:
-    cors_origins.append(settings.FRONTEND_URL)
-    # Also add without trailing slash
-    cors_origins.append(settings.FRONTEND_URL.rstrip("/"))
-
-# CORS middleware
+# CORS middleware - allow all origins for Railway deployment
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=cors_origins,
-    allow_credentials=True,
+    allow_origins=["*"],
+    allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
 )
