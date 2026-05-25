@@ -1,28 +1,55 @@
-from typing import List
+from typing import List, Optional
 from datetime import date, timedelta
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from sqlalchemy import func
 from pydantic import BaseModel
-import random
+from dateutil.relativedelta import relativedelta
+import pandas as pd
+import numpy as np
 
 from core.deps import get_db, get_current_user
 from models.user import User
 from models.transaction import Transaction
+from ml.model_loader import get_model, get_scaler, get_scaler_target, INPUT_COLS, LOOKBACK
 
 router = APIRouter(prefix="/predict", tags=["predict"])
 
 
+# ==================================================
+# Response Models
+# ==================================================
+
 class CategoryPrediction(BaseModel):
     category: str
     predicted: int
+    percentage: float
 
 
 class PredictionResponse(BaseModel):
-    predicted_expense: int
-    confidence: float
-    based_on_months: int
+    has_prediction: bool
+    months_available: int
+    months_needed: int = LOOKBACK
+    predicted_expense: int | None
+    last_month_expense: int | None = None
+    change_percentage: float | None = None
+    change_direction: str | None = None
+    confidence: str | None = None
+    confidence_percentage: int | None = None
     breakdown: List[CategoryPrediction]
+    message: str
+
+
+class BrokeDateResponse(BaseModel):
+    has_prediction: bool
+    current_balance: int | None = None
+    avg_daily_expense: int | None = None
+    days_remaining: int | None = None
+    predicted_broke_date: str | None = None
+    predicted_broke_date_formatted: str | None = None
+    warning_level: str | None = None  # "danger" | "warning" | "safe"
+    tips: List[str] = []
+    message: str
 
 
 class Insight(BaseModel):
@@ -42,100 +69,97 @@ class HealthScore(BaseModel):
     checks: List[dict]
 
 
-class BrokeDateResponse(BaseModel):
-    broke_date: str | None
-    days_left: int | None
-    daily_budget: int
-    current_balance: int
-    status: str  # safe, warning, danger
-    message: str
+class ModelStatusResponse(BaseModel):
+    model_loaded: bool
+    lookback_required: int
+    months_available: int
+    ready_for_prediction: bool
+    model_performance: dict
 
 
-@router.get("/broke-date", response_model=BrokeDateResponse)
-def get_broke_date(
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user)
-):
+# ==================================================
+# HELPER - Agregasi transaksi bulanan dari DB
+# ==================================================
+
+def get_monthly_aggregates(user_id, db: Session, months: int = 6) -> pd.DataFrame:
     """
-    Predict when user will run out of money based on spending patterns.
+    Ambil dan agregasi transaksi user ke format bulanan.
+    Return DataFrame dengan kolom sesuai INPUT_COLS.
     """
     today = date.today()
-    this_month_start = date(today.year, today.month, 1)
+    start_date = (today.replace(day=1) - relativedelta(months=months)).replace(day=1)
 
-    # Get this month's income
-    income = db.query(func.coalesce(func.sum(Transaction.amount), 0)).filter(
-        Transaction.user_id == current_user.id,
-        Transaction.date >= this_month_start,
-        Transaction.type == "income"
-    ).scalar()
+    # Query semua transaksi dalam rentang
+    transactions = db.query(Transaction).filter(
+        Transaction.user_id == user_id,
+        Transaction.date >= start_date,
+        Transaction.date < today.replace(day=1)  # exclude bulan berjalan
+    ).all()
 
-    # Get this month's expense
-    expense = db.query(func.coalesce(func.sum(Transaction.amount), 0)).filter(
-        Transaction.user_id == current_user.id,
-        Transaction.date >= this_month_start,
-        Transaction.type == "expense"
-    ).scalar()
+    if not transactions:
+        return pd.DataFrame()
 
-    current_balance = income - expense
+    # Convert ke DataFrame
+    df = pd.DataFrame([{
+        'date': t.date,
+        'amount': t.amount,
+        'type': t.type,
+        'category': t.category,
+    } for t in transactions])
 
-    # Calculate average daily expense from last 14 days
-    two_weeks_ago = today - timedelta(days=14)
-    daily_expenses = db.query(
-        Transaction.date,
-        func.sum(Transaction.amount).label("total")
-    ).filter(
-        Transaction.user_id == current_user.id,
-        Transaction.date >= two_weeks_ago,
-        Transaction.type == "expense"
-    ).group_by(Transaction.date).all()
+    df['date'] = pd.to_datetime(df['date'])
+    df['year'] = df['date'].dt.year
+    df['month'] = df['date'].dt.month
 
-    if daily_expenses:
-        avg_daily_expense = sum(d.total for d in daily_expenses) / 14
-    else:
-        avg_daily_expense = expense / max(today.day, 1)
+    # Agregasi per bulan
+    monthly_rows = []
 
-    daily_budget = int(avg_daily_expense) if avg_daily_expense > 0 else 0
+    for (year, month), group in df.groupby(['year', 'month']):
+        expense_rows = group[group['type'] == 'expense']
+        income_rows = group[group['type'] == 'income']
 
-    # Calculate days until broke
-    if current_balance <= 0:
-        days_left = 0
-        broke_date = today.isoformat()
-        status = "danger"
-        message = "Saldo kamu sudah minus! Kurangi pengeluaran sekarang."
-    elif avg_daily_expense <= 0:
-        days_left = None
-        broke_date = None
-        status = "safe"
-        message = "Belum cukup data untuk prediksi."
-    else:
-        days_left = int(current_balance / avg_daily_expense)
-        if days_left > 365:
-            broke_date = None
-            status = "safe"
-            message = "Keuangan kamu aman untuk waktu yang lama!"
-        else:
-            broke_date_obj = today + timedelta(days=days_left)
-            broke_date = broke_date_obj.isoformat()
+        total_expense = expense_rows['amount'].sum() if len(expense_rows) > 0 else 0
+        total_income = income_rows['amount'].sum() if len(income_rows) > 0 else 0
+        frekuensi_exp = len(expense_rows)
+        avg_expense = expense_rows['amount'].mean() if len(expense_rows) > 0 else 0
+        net = total_income - total_expense
 
-            if days_left <= 7:
-                status = "danger"
-                message = f"Hati-hati! Saldo bisa habis dalam {days_left} hari."
-            elif days_left <= 14:
-                status = "warning"
-                message = f"Perhatikan pengeluaranmu. Saldo cukup untuk {days_left} hari."
-            else:
-                status = "safe"
-                message = f"Keuangan cukup aman untuk {days_left} hari ke depan."
+        # Seasonal flags
+        is_ramadan = 1 if month in [3, 4] else 0
+        is_harbolnas_month = 1 if month in [11, 12] else 0
 
-    return BrokeDateResponse(
-        broke_date=broke_date,
-        days_left=days_left,
-        daily_budget=daily_budget,
-        current_balance=current_balance,
-        status=status,
-        message=message
-    )
+        # Skip bulan dengan expense sangat kecil (tidak aktif)
+        if total_expense < 300000:
+            continue
 
+        monthly_rows.append({
+            'year': year,
+            'month': month,
+            'total_expense': total_expense,
+            'total_income': total_income,
+            'net': net,
+            'frekuensi_exp': frekuensi_exp,
+            'avg_expense': avg_expense,
+            'is_ramadan': is_ramadan,
+            'is_harbolnas_month': is_harbolnas_month,
+        })
+
+    if not monthly_rows:
+        return pd.DataFrame()
+
+    result = pd.DataFrame(monthly_rows)
+    result = result.sort_values(['year', 'month']).reset_index(drop=True)
+    return result
+
+
+def has_enough_data(monthly_df: pd.DataFrame) -> bool:
+    """Cek apakah user punya cukup data untuk prediksi (minimal LOOKBACK bulan)."""
+    return len(monthly_df) >= LOOKBACK
+
+
+# ==================================================
+# ENDPOINT 1 - Prediksi Pengeluaran Bulan Depan
+# ==================================================
 
 @router.get("/next-month", response_model=PredictionResponse)
 def predict_next_month(
@@ -143,77 +167,261 @@ def predict_next_month(
     current_user: User = Depends(get_current_user)
 ):
     """
-    Placeholder prediction endpoint - will be replaced with LSTM model.
-    Currently uses simple average of last 3 months.
+    Prediksi total pengeluaran bulan depan menggunakan model LSTM.
+    Membutuhkan minimal 2 bulan data historis user.
     """
-    today = date.today()
-    three_months_ago = today - timedelta(days=90)
+    user_id = current_user.id
 
-    # Get category breakdown from last 3 months
-    results = db.query(
-        Transaction.category,
-        func.sum(Transaction.amount).label("total")
-    ).filter(
-        Transaction.user_id == current_user.id,
-        Transaction.date >= three_months_ago,
-        Transaction.type == "expense"
-    ).group_by(Transaction.category).all()
+    # Ambil data bulanan
+    monthly_df = get_monthly_aggregates(user_id, db, months=6)
+    months_available = len(monthly_df)
 
-    if not results:
-        # Return dummy data if no transactions
+    # Cek data cukup
+    if not has_enough_data(monthly_df):
         return PredictionResponse(
-            predicted_expense=1847000,
-            confidence=0.5,
-            based_on_months=0,
-            breakdown=[
-                CategoryPrediction(category="makan", predicted=650000),
-                CategoryPrediction(category="transport", predicted=280000),
-                CategoryPrediction(category="belanja online", predicted=420000),
-                CategoryPrediction(category="kopi", predicted=247000),
-                CategoryPrediction(category="hiburan", predicted=250000),
-            ]
+            has_prediction=False,
+            months_available=months_available,
+            months_needed=LOOKBACK,
+            predicted_expense=None,
+            breakdown=[],
+            message=f"Kamu baru punya data {months_available} bulan. Butuh minimal {LOOKBACK} bulan untuk prediksi."
         )
 
-    # Simple prediction: monthly average (total / 3)
-    breakdown = []
-    total_predicted = 0
-    for r in results:
-        monthly_avg = r.total // 3
-        breakdown.append(CategoryPrediction(
-            category=r.category,
-            predicted=monthly_avg
-        ))
-        total_predicted += monthly_avg
+    try:
+        model = get_model()
+        scaler = get_scaler()
+        scaler_target = get_scaler_target()
 
-    # Sort by predicted amount
-    breakdown.sort(key=lambda x: x.predicted, reverse=True)
+        # Ambil 2 bulan terakhir
+        last_n = monthly_df.tail(LOOKBACK)
 
-    # Confidence based on data availability (simple heuristic)
-    transaction_count = db.query(func.count(Transaction.id)).filter(
-        Transaction.user_id == current_user.id,
-        Transaction.date >= three_months_ago,
-        Transaction.type == "expense"
-    ).scalar()
+        # Scale input
+        X_scaled = scaler.transform(last_n[INPUT_COLS])  # shape: (2, 7)
+        X_input = X_scaled.reshape(1, LOOKBACK, len(INPUT_COLS))  # shape: (1, 2, 7)
 
-    confidence = min(0.95, 0.5 + (transaction_count / 200))
+        # Predict
+        pred_scaled = model.predict(X_input, verbose=0)  # shape: (1, 1)
 
-    return PredictionResponse(
-        predicted_expense=total_predicted,
-        confidence=round(confidence, 2),
-        based_on_months=3,
-        breakdown=breakdown[:7]  # Top 7 categories
+        # Inverse transform ke Rupiah
+        pred_rp = float(scaler_target.inverse_transform(
+            pred_scaled.reshape(-1, 1)
+        )[0][0])
+
+        # Hitung confidence berdasarkan konsistensi data
+        if months_available >= 6:
+            confidence = "high"
+            confidence_pct = 87
+        elif months_available >= 4:
+            confidence = "medium"
+            confidence_pct = 72
+        else:
+            confidence = "low"
+            confidence_pct = 58
+
+        # Breakdown prediksi per kategori berdasarkan proporsi 2 bulan terakhir
+        two_months_ago = date.today().replace(day=1) - relativedelta(months=2)
+        recent_transactions = db.query(Transaction).filter(
+            Transaction.user_id == user_id,
+            Transaction.type == 'expense',
+            Transaction.date >= two_months_ago
+        ).all()
+
+        category_totals = {}
+        for t in recent_transactions:
+            category_totals[t.category] = category_totals.get(t.category, 0) + t.amount
+
+        total_recent = sum(category_totals.values())
+        breakdown = []
+        if total_recent > 0:
+            for cat, amount in sorted(category_totals.items(), key=lambda x: x[1], reverse=True)[:5]:
+                proportion = amount / total_recent
+                predicted_cat = pred_rp * proportion
+                breakdown.append(CategoryPrediction(
+                    category=cat,
+                    predicted=round(predicted_cat),
+                    percentage=round(proportion * 100, 1)
+                ))
+
+        # Hitung perubahan vs bulan lalu
+        last_month_expense = float(monthly_df.iloc[-1]['total_expense'])
+        change_pct = ((pred_rp - last_month_expense) / last_month_expense * 100) if last_month_expense > 0 else 0
+
+        return PredictionResponse(
+            has_prediction=True,
+            months_available=months_available,
+            predicted_expense=round(pred_rp),
+            last_month_expense=round(last_month_expense),
+            change_percentage=round(change_pct, 1),
+            change_direction="up" if change_pct > 0 else "down",
+            confidence=confidence,
+            confidence_percentage=confidence_pct,
+            breakdown=breakdown,
+            message=f"Berdasarkan {months_available} bulan data kamu"
+        )
+
+    except FileNotFoundError as e:
+        raise HTTPException(status_code=500, detail=f"Model file not found: {str(e)}")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Prediksi gagal: {str(e)}")
+
+
+# ==================================================
+# ENDPOINT 2 - Prediksi Kapan Bokek
+# ==================================================
+
+@router.get("/broke-date", response_model=BrokeDateResponse)
+def predict_broke_date(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Prediksi tanggal uang habis berdasarkan saldo saat ini
+    dan rata-rata pengeluaran harian 30 hari terakhir.
+    """
+    user_id = current_user.id
+    today = date.today()
+    thirty_days_ago = today - relativedelta(days=30)
+
+    # Ambil semua transaksi 30 hari terakhir
+    recent_transactions = db.query(Transaction).filter(
+        Transaction.user_id == user_id,
+        Transaction.date >= thirty_days_ago
+    ).all()
+
+    if not recent_transactions:
+        return BrokeDateResponse(
+            has_prediction=False,
+            message="Belum cukup data untuk prediksi. Mulai catat transaksi kamu!"
+        )
+
+    # Hitung saldo saat ini (semua waktu)
+    all_transactions = db.query(Transaction).filter(
+        Transaction.user_id == user_id
+    ).all()
+
+    total_income = sum(t.amount for t in all_transactions if t.type == 'income')
+    total_expense = sum(t.amount for t in all_transactions if t.type == 'expense')
+    current_balance = total_income - total_expense
+
+    # Hitung rata-rata pengeluaran harian (30 hari terakhir)
+    daily_expenses = {}
+    for t in recent_transactions:
+        if t.type == 'expense':
+            date_key = t.date.isoformat()
+            daily_expenses[date_key] = daily_expenses.get(date_key, 0) + t.amount
+
+    if not daily_expenses:
+        return BrokeDateResponse(
+            has_prediction=False,
+            message="Belum ada data pengeluaran 30 hari terakhir."
+        )
+
+    avg_daily_expense = sum(daily_expenses.values()) / 30  # dibagi 30, bukan jumlah hari aktif
+
+    # Prediksi hari sampai bokek
+    if avg_daily_expense <= 0:
+        return BrokeDateResponse(
+            has_prediction=False,
+            message="Data pengeluaran tidak valid."
+        )
+
+    days_remaining = int(current_balance / avg_daily_expense) if current_balance > 0 else 0
+    predicted_broke_date = today + relativedelta(days=days_remaining)
+
+    # Warning level
+    if days_remaining < 7:
+        warning_level = "danger"
+    elif days_remaining < 14:
+        warning_level = "warning"
+    else:
+        warning_level = "safe"
+
+    # Tips berdasarkan kategori terbesar
+    category_totals = {}
+    for t in recent_transactions:
+        if t.type == 'expense':
+            category_totals[t.category] = category_totals.get(t.category, 0) + t.amount
+
+    top_categories = sorted(category_totals.items(), key=lambda x: x[1], reverse=True)[:2]
+
+    tips_map = {
+        "makan": "Coba masak sendiri beberapa kali seminggu",
+        "kopi": "Kurangi frekuensi beli kopi di luar",
+        "belanja online": "Tahan dulu belanja online sampai gajian",
+        "transport": "Coba jalan kaki atau naik angkot untuk jarak dekat",
+        "hiburan": "Cari hiburan gratis dulu minggu ini",
+        "fashion": "Skip belanja baju dulu bulan ini",
+        "nongkrong": "Kurangi frekuensi nongkrong minggu ini",
+    }
+
+    tips = []
+    for cat, _ in top_categories:
+        tip = tips_map.get(cat, f"Kurangi pengeluaran {cat} minggu ini")
+        tips.append(tip)
+
+    if not tips:
+        tips = ["Catat semua pengeluaran kamu agar lebih terkontrol"]
+
+    return BrokeDateResponse(
+        has_prediction=True,
+        current_balance=round(current_balance),
+        avg_daily_expense=round(avg_daily_expense),
+        days_remaining=days_remaining,
+        predicted_broke_date=predicted_broke_date.isoformat(),
+        predicted_broke_date_formatted=predicted_broke_date.strftime("%d %B %Y"),
+        warning_level=warning_level,
+        tips=tips,
+        message=f"Dengan pengeluaran rata-rata Rp {avg_daily_expense:,.0f}/hari"
     )
 
+
+# ==================================================
+# ENDPOINT 3 - Model Status
+# ==================================================
+
+@router.get("/status", response_model=ModelStatusResponse)
+def model_status(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """Cek status model dan berapa bulan data yang dimiliki user."""
+    user_id = current_user.id
+
+    monthly_df = get_monthly_aggregates(user_id, db, months=12)
+    months_available = len(monthly_df)
+
+    # Check if model is loadable
+    model_loaded = False
+    try:
+        get_model()
+        model_loaded = True
+    except Exception:
+        pass
+
+    return ModelStatusResponse(
+        model_loaded=model_loaded,
+        lookback_required=LOOKBACK,
+        months_available=months_available,
+        ready_for_prediction=months_available >= LOOKBACK,
+        model_performance={
+            "mae_rupiah": 278601,
+            "rmse_rupiah": 377230,
+            "smape_pct": 18.41,
+            "status": "LULUS"
+        }
+    )
+
+
+# ==================================================
+# ENDPOINT 4 - Insights (existing, kept for compatibility)
+# ==================================================
 
 @router.get("/insights", response_model=InsightsResponse)
 def get_insights(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
-    """
-    Generate spending insights based on transaction patterns.
-    Placeholder - will be enhanced with ML insights.
-    """
+    """Generate spending insights based on transaction patterns."""
     today = date.today()
     this_month_start = date(today.year, today.month, 1)
     last_month_start = (this_month_start - timedelta(days=1)).replace(day=1)
@@ -293,14 +501,16 @@ def get_insights(
     return InsightsResponse(insights=insights)
 
 
+# ==================================================
+# ENDPOINT 5 - Health Score (existing, kept for compatibility)
+# ==================================================
+
 @router.get("/health-score", response_model=HealthScore)
 def get_health_score(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
-    """
-    Calculate financial health score based on spending patterns.
-    """
+    """Calculate financial health score based on spending patterns."""
     today = date.today()
     this_month_start = date(today.year, today.month, 1)
 
@@ -330,7 +540,7 @@ def get_health_score(
     else:
         checks.append({"status": "info", "message": "Belum ada data pemasukan"})
 
-    # Check 2: Essential spending ratio (food + transport should be < 50%)
+    # Check 2: Essential spending ratio
     essential_categories = ["makan", "transport", "kos/kontrakan", "tagihan"]
     essential_spending = db.query(func.coalesce(func.sum(Transaction.amount), 0)).filter(
         Transaction.user_id == current_user.id,

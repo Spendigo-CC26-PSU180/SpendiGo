@@ -13,6 +13,18 @@ settings = get_settings()
 async def lifespan(app: FastAPI):
     # Startup: Create tables
     Base.metadata.create_all(bind=engine)
+
+    # Pre-load ML models for faster first request
+    try:
+        from ml.model_loader import get_model, get_scaler, get_scaler_target
+        get_model()
+        get_scaler()
+        get_scaler_target()
+        print("ML models loaded successfully")
+    except Exception as e:
+        print(f"ML models not loaded: {e}")
+        # Don't crash server - endpoint will return error if called
+
     yield
     # Shutdown: cleanup if needed
 

@@ -3,13 +3,16 @@ import { analyticsApi } from '../../lib/api';
 import { formatRupiah } from '../../lib/utils';
 
 interface SummaryData {
-  income: number;
-  expense: number;
+  total_income: number;
+  total_expense: number;
   balance: number;
+  transaction_count: number;
+  avg_daily_expense: number;
 }
 
 export default function SidebarSummary() {
   const [data, setData] = useState<SummaryData | null>(null);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     const fetchSummary = async () => {
@@ -18,12 +21,14 @@ export default function SidebarSummary() {
         setData(response.data);
       } catch (error) {
         console.error('Failed to fetch summary:', error);
+      } finally {
+        setLoading(false);
       }
     };
     fetchSummary();
   }, []);
 
-  if (!data) {
+  if (loading) {
     return (
       <div className="bg-gradient-to-br from-primary-50 to-secondary-50 rounded-xl p-3 mb-4 animate-pulse">
         <div className="h-3 bg-gray-200 rounded w-20 mb-2"></div>
@@ -36,15 +41,20 @@ export default function SidebarSummary() {
     );
   }
 
+  // Handle no data case
+  const balance = data?.balance ?? 0;
+  const income = data?.total_income ?? 0;
+  const expense = data?.total_expense ?? 0;
+
   return (
     <div className="bg-gradient-to-br from-primary-50 to-secondary-50 rounded-xl p-3 mb-4">
       <p className="text-xs text-gray-500 mb-1">Saldo Bulan Ini</p>
-      <p className={`text-lg font-bold ${data.balance >= 0 ? 'text-gray-900' : 'text-red-500'}`}>
-        {formatRupiah(data.balance)}
+      <p className={`text-lg font-bold ${balance >= 0 ? 'text-gray-900' : 'text-red-500'}`}>
+        {formatRupiah(balance)}
       </p>
       <div className="flex justify-between mt-2 text-xs">
-        <span className="text-green-600">+{formatRupiah(data.income)}</span>
-        <span className="text-red-500">-{formatRupiah(data.expense)}</span>
+        <span className="text-green-600">+{formatRupiah(income)}</span>
+        <span className="text-red-500">-{formatRupiah(expense)}</span>
       </div>
     </div>
   );

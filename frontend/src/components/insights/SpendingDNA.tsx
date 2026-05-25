@@ -1,14 +1,17 @@
 import { useEffect, useState } from 'react';
+import { Dna } from 'lucide-react';
 import { analyticsApi } from '../../lib/api';
 import { formatRupiah } from '../../lib/utils';
 import { CardSkeleton } from '../ui/Skeleton';
 
 interface SpendingDNAData {
-  dna_type: string;
-  icon: string;
-  label: string;
-  description: string;
+  has_data: boolean;
+  dna_type: string | null;
+  icon: string | null;
+  label: string | null;
+  description: string | null;
   top_categories: { category: string; amount: number }[];
+  message: string | null;
 }
 
 const DNA_COLORS: Record<string, { bg: string; border: string; text: string }> = {
@@ -43,12 +46,30 @@ export default function SpendingDNA() {
   if (!data) {
     return (
       <div className="card text-center py-8">
-        <p className="text-gray-500">Belum cukup data untuk analisis</p>
+        <p className="text-gray-500">Gagal memuat data</p>
       </div>
     );
   }
 
-  const colors = DNA_COLORS[data.dna_type] || DNA_COLORS.balanced;
+  // Empty state when no data
+  if (!data.has_data) {
+    return (
+      <div className="card bg-gradient-to-br from-gray-50 to-slate-50 border border-gray-200">
+        <div className="flex items-start gap-4">
+          <div className="p-3 rounded-xl bg-gray-100">
+            <Dna className="w-6 h-6 text-gray-400" />
+          </div>
+          <div className="flex-1">
+            <p className="text-xs text-gray-500 uppercase tracking-wider mb-1">Spending DNA</p>
+            <h3 className="text-base font-semibold text-gray-900 mb-1">Belum Tersedia</h3>
+            <p className="text-sm text-gray-600">{data.message || "Mulai catat transaksimu untuk mengetahui spending DNA kamu!"}</p>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  const colors = DNA_COLORS[data.dna_type || 'balanced'] || DNA_COLORS.balanced;
 
   return (
     <div className={`card bg-gradient-to-br ${colors.bg} border ${colors.border}`}>
@@ -61,11 +82,11 @@ export default function SpendingDNA() {
         </div>
       </div>
 
-      {data.top_categories.length > 0 && (
+      {data.top_categories && data.top_categories.length > 0 && (
         <div className="mt-4 pt-4 border-t border-gray-200/50">
           <p className="text-xs text-gray-500 mb-2">Top Pengeluaran:</p>
           <div className="flex flex-wrap gap-2">
-            {data.top_categories.map((cat, i) => (
+            {data.top_categories.map((cat) => (
               <span
                 key={cat.category}
                 className="inline-flex items-center gap-1 px-2 py-1 bg-white/80 rounded-lg text-xs"

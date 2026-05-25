@@ -141,11 +141,13 @@ def get_category_summary(
 
 
 class SpendingDNAResponse(BaseModel):
-    dna_type: str
-    icon: str
-    label: str
-    description: str
-    top_categories: List[dict]
+    has_data: bool
+    dna_type: str | None = None
+    icon: str | None = None
+    label: str | None = None
+    description: str | None = None
+    top_categories: List[dict] = []
+    message: str | None = None
 
 
 class WeeklyWrappedResponse(BaseModel):
@@ -195,6 +197,13 @@ def get_spending_dna(
 
     top_categories = [{"category": c.category, "amount": c.total} for c in categories]
 
+    # Check if user has enough data
+    if total_expense == 0 and total_income == 0:
+        return SpendingDNAResponse(
+            has_data=False,
+            message="Belum ada data transaksi. Mulai catat pengeluaranmu!"
+        )
+
     # Calculate spending ratio and variance
     spending_ratio = total_expense / total_income if total_income > 0 else 1
 
@@ -239,6 +248,7 @@ def get_spending_dna(
         description = "Balance is the key! Kamu udah bagus ngatur keuangan."
 
     return SpendingDNAResponse(
+        has_data=True,
         dna_type=dna_type,
         icon=icon,
         label=label,
