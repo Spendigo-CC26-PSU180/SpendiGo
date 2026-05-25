@@ -91,11 +91,19 @@ export const analyticsApi = {
 };
 
 // Predict API
+export interface WhatIfRequest {
+  income_change?: number;
+  expense_category_changes?: Record<string, number>;
+  add_monthly_expense?: number;
+}
+
 export const predictApi = {
   getNextMonth: () => api.get('/predict/next-month'),
+  getNextThreeMonths: () => api.get('/predict/next-three-months'),
   getInsights: () => api.get('/predict/insights'),
   getHealthScore: () => api.get('/predict/health-score'),
   getBrokeDate: () => api.get('/predict/broke-date'),
+  simulateWhatIf: (data: WhatIfRequest) => api.post('/predict/what-if', data),
 };
 
 // Chat API

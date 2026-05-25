@@ -77,6 +77,42 @@ class ModelStatusResponse(BaseModel):
     model_performance: dict
 
 
+class MonthPrediction(BaseModel):
+    month: str  # "2026-06"
+    month_label: str  # "Juni 2026"
+    predicted_expense: int
+    confidence_percentage: int
+
+
+class ThreeMonthResponse(BaseModel):
+    has_prediction: bool
+    months_available: int
+    predictions: List[MonthPrediction]
+    total_predicted: int | None = None
+    average_predicted: int | None = None
+    trend: str | None = None  # "increasing" | "decreasing" | "stable"
+    message: str
+
+
+class WhatIfRequest(BaseModel):
+    income_change: float = 0  # percentage change, e.g., -20 for 20% less income
+    expense_category_changes: dict = {}  # {"makan": -30, "kopi": -50} percentage changes
+    add_monthly_expense: int = 0  # flat additional expense, e.g., new kos
+
+
+class WhatIfResponse(BaseModel):
+    has_prediction: bool
+    baseline_expense: int | None = None
+    simulated_expense: int | None = None
+    difference: int | None = None
+    difference_percentage: float | None = None
+    baseline_broke_days: int | None = None
+    simulated_broke_days: int | None = None
+    broke_days_difference: int | None = None
+    insights: List[str] = []
+    message: str
+
+
 # ==================================================
 # HELPER - Agregasi transaksi bulanan dari DB
 # ==================================================
@@ -499,6 +535,262 @@ def get_insights(
         ))
 
     return InsightsResponse(insights=insights)
+
+
+# ==================================================
+# ENDPOINT 5 - Health Score (existing, kept for compatibility)
+# ==================================================
+
+# ==================================================
+# ENDPOINT 6 - Prediksi 3 Bulan Rolling
+# ==================================================
+
+@router.get("/next-three-months", response_model=ThreeMonthResponse)
+def predict_next_three_months(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Prediksi pengeluaran 3 bulan ke depan dengan rolling prediction.
+    Setiap prediksi jadi input untuk bulan berikutnya.
+    """
+    user_id = current_user.id
+
+    # Ambil data bulanan
+    monthly_df = get_monthly_aggregates(user_id, db, months=6)
+    months_available = len(monthly_df)
+
+    # Cek data cukup
+    if not has_enough_data(monthly_df):
+        return ThreeMonthResponse(
+            has_prediction=False,
+            months_available=months_available,
+            predictions=[],
+            message=f"Butuh minimal {LOOKBACK} bulan data untuk prediksi."
+        )
+
+    try:
+        model = get_model()
+        scaler = get_scaler()
+        scaler_target = get_scaler_target()
+
+        # Month labels for Indonesian
+        month_names = ["", "Januari", "Februari", "Maret", "April", "Mei", "Juni",
+                       "Juli", "Agustus", "September", "Oktober", "November", "Desember"]
+
+        predictions = []
+        current_data = monthly_df.tail(LOOKBACK).copy()
+
+        today = date.today()
+        next_month = today.replace(day=1) + relativedelta(months=1)
+
+        for i in range(3):
+            target_month = next_month + relativedelta(months=i)
+            month_str = target_month.strftime("%Y-%m")
+            month_label = f"{month_names[target_month.month]} {target_month.year}"
+
+            # Prepare input
+            X_scaled = scaler.transform(current_data[INPUT_COLS])
+            X_input = X_scaled.reshape(1, LOOKBACK, len(INPUT_COLS))
+
+            # Predict
+            pred_scaled = model.predict(X_input, verbose=0)
+            pred_rp = float(scaler_target.inverse_transform(
+                pred_scaled.reshape(-1, 1)
+            )[0][0])
+
+            # Confidence decreases for further predictions
+            confidence = max(50, 87 - (i * 12))
+
+            predictions.append(MonthPrediction(
+                month=month_str,
+                month_label=month_label,
+                predicted_expense=round(pred_rp),
+                confidence_percentage=confidence
+            ))
+
+            # Update current_data for rolling prediction
+            # Use the prediction as the new row
+            new_row = current_data.iloc[-1].copy()
+            new_row['total_expense'] = pred_rp
+            new_row['year'] = target_month.year
+            new_row['month'] = target_month.month
+            new_row['is_ramadan'] = 1 if target_month.month in [3, 4] else 0
+            new_row['is_harbolnas_month'] = 1 if target_month.month in [11, 12] else 0
+
+            # Shift window: drop first, add new
+            current_data = pd.concat([
+                current_data.iloc[1:],
+                pd.DataFrame([new_row])
+            ]).reset_index(drop=True)
+
+        # Calculate totals and trend
+        total_predicted = sum(p.predicted_expense for p in predictions)
+        average_predicted = total_predicted // 3
+
+        # Determine trend
+        if predictions[2].predicted_expense > predictions[0].predicted_expense * 1.05:
+            trend = "increasing"
+        elif predictions[2].predicted_expense < predictions[0].predicted_expense * 0.95:
+            trend = "decreasing"
+        else:
+            trend = "stable"
+
+        return ThreeMonthResponse(
+            has_prediction=True,
+            months_available=months_available,
+            predictions=predictions,
+            total_predicted=total_predicted,
+            average_predicted=average_predicted,
+            trend=trend,
+            message=f"Prediksi 3 bulan berdasarkan {months_available} bulan data"
+        )
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Prediksi gagal: {str(e)}")
+
+
+# ==================================================
+# ENDPOINT 7 - What-If Simulator
+# ==================================================
+
+@router.post("/what-if", response_model=WhatIfResponse)
+def simulate_what_if(
+    request: WhatIfRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Simulasi what-if: bagaimana jika income/expense berubah?
+    Membandingkan baseline vs simulated prediction.
+    """
+    user_id = current_user.id
+
+    # Ambil data bulanan
+    monthly_df = get_monthly_aggregates(user_id, db, months=6)
+    months_available = len(monthly_df)
+
+    # Cek data cukup
+    if not has_enough_data(monthly_df):
+        return WhatIfResponse(
+            has_prediction=False,
+            message=f"Butuh minimal {LOOKBACK} bulan data untuk simulasi."
+        )
+
+    try:
+        model = get_model()
+        scaler = get_scaler()
+        scaler_target = get_scaler_target()
+
+        # 1. Calculate BASELINE prediction
+        last_n = monthly_df.tail(LOOKBACK).copy()
+        X_scaled = scaler.transform(last_n[INPUT_COLS])
+        X_input = X_scaled.reshape(1, LOOKBACK, len(INPUT_COLS))
+        pred_scaled = model.predict(X_input, verbose=0)
+        baseline_expense = float(scaler_target.inverse_transform(
+            pred_scaled.reshape(-1, 1)
+        )[0][0])
+
+        # 2. Calculate SIMULATED prediction
+        simulated_data = last_n.copy()
+
+        # Apply income change
+        if request.income_change != 0:
+            multiplier = 1 + (request.income_change / 100)
+            simulated_data['total_income'] = simulated_data['total_income'] * multiplier
+            simulated_data['net'] = simulated_data['total_income'] - simulated_data['total_expense']
+
+        # Apply category changes to expense
+        total_category_impact = 0
+        for category, change_pct in request.expense_category_changes.items():
+            # Get category proportion from recent transactions
+            two_months_ago = date.today().replace(day=1) - relativedelta(months=2)
+            cat_total = db.query(func.coalesce(func.sum(Transaction.amount), 0)).filter(
+                Transaction.user_id == user_id,
+                Transaction.type == 'expense',
+                Transaction.category == category,
+                Transaction.date >= two_months_ago
+            ).scalar()
+
+            if cat_total > 0:
+                # Calculate impact as percentage of total expense
+                avg_month_expense = simulated_data['total_expense'].mean()
+                cat_impact = (cat_total / 2) * (change_pct / 100)  # divide by 2 for monthly avg
+                total_category_impact += cat_impact
+
+        # Apply category impact to expense
+        simulated_data['total_expense'] = simulated_data['total_expense'] + total_category_impact
+
+        # Add flat monthly expense
+        if request.add_monthly_expense != 0:
+            simulated_data['total_expense'] = simulated_data['total_expense'] + request.add_monthly_expense
+
+        # Recalculate derived fields
+        simulated_data['net'] = simulated_data['total_income'] - simulated_data['total_expense']
+        simulated_data['avg_expense'] = simulated_data['total_expense'] / simulated_data['frekuensi_exp'].clip(lower=1)
+
+        # Predict with simulated data
+        X_sim_scaled = scaler.transform(simulated_data[INPUT_COLS])
+        X_sim_input = X_sim_scaled.reshape(1, LOOKBACK, len(INPUT_COLS))
+        pred_sim_scaled = model.predict(X_sim_input, verbose=0)
+        simulated_expense = float(scaler_target.inverse_transform(
+            pred_sim_scaled.reshape(-1, 1)
+        )[0][0])
+
+        # 3. Calculate broke days comparison
+        thirty_days_ago = date.today() - relativedelta(days=30)
+        all_transactions = db.query(Transaction).filter(
+            Transaction.user_id == user_id
+        ).all()
+
+        total_income = sum(t.amount for t in all_transactions if t.type == 'income')
+        total_exp = sum(t.amount for t in all_transactions if t.type == 'expense')
+        current_balance = total_income - total_exp
+
+        recent_expenses = [t for t in all_transactions if t.type == 'expense' and t.date >= thirty_days_ago]
+        avg_daily_baseline = sum(t.amount for t in recent_expenses) / 30 if recent_expenses else 0
+
+        baseline_broke_days = int(current_balance / avg_daily_baseline) if avg_daily_baseline > 0 else 999
+
+        # Simulated daily expense based on predicted change
+        expense_change_ratio = simulated_expense / baseline_expense if baseline_expense > 0 else 1
+        avg_daily_simulated = avg_daily_baseline * expense_change_ratio
+        simulated_broke_days = int(current_balance / avg_daily_simulated) if avg_daily_simulated > 0 else 999
+
+        # 4. Generate insights
+        insights = []
+        difference = round(simulated_expense - baseline_expense)
+        difference_pct = ((simulated_expense - baseline_expense) / baseline_expense * 100) if baseline_expense > 0 else 0
+
+        if difference < 0:
+            insights.append(f"Kamu bisa hemat sekitar Rp {abs(difference):,}/bulan!")
+        elif difference > 0:
+            insights.append(f"Pengeluaran diprediksi naik Rp {difference:,}/bulan")
+
+        broke_diff = simulated_broke_days - baseline_broke_days
+        if broke_diff > 7:
+            insights.append(f"Uangmu bisa bertahan {broke_diff} hari lebih lama 🎉")
+        elif broke_diff < -7:
+            insights.append(f"Hati-hati, uangmu bisa habis {abs(broke_diff)} hari lebih cepat!")
+
+        if request.income_change < 0:
+            insights.append("Pertimbangkan side hustle atau freelance untuk tambahan income")
+
+        return WhatIfResponse(
+            has_prediction=True,
+            baseline_expense=round(baseline_expense),
+            simulated_expense=round(simulated_expense),
+            difference=difference,
+            difference_percentage=round(difference_pct, 1),
+            baseline_broke_days=baseline_broke_days,
+            simulated_broke_days=simulated_broke_days,
+            broke_days_difference=broke_diff,
+            insights=insights,
+            message="Hasil simulasi berhasil dihitung"
+        )
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Simulasi gagal: {str(e)}")
 
 
 # ==================================================
