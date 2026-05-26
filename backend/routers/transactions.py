@@ -205,11 +205,14 @@ async def import_transactions(
 
     try:
         content = await file.read()
-        # Try to decode with utf-8, fallback to latin-1
+        # Try to decode with utf-8-sig (handles BOM), fallback to utf-8, then latin-1
         try:
-            text = content.decode('utf-8')
+            text = content.decode('utf-8-sig')  # Handles BOM
         except UnicodeDecodeError:
-            text = content.decode('latin-1')
+            try:
+                text = content.decode('utf-8')
+            except UnicodeDecodeError:
+                text = content.decode('latin-1')
 
         # Parse CSV
         reader = csv.DictReader(io.StringIO(text))
@@ -219,10 +222,18 @@ async def import_transactions(
         errors = []
         rows = list(reader)
 
+        # Normalize column names (lowercase, strip whitespace)
+        if rows:
+            normalized_rows = []
+            for row in rows:
+                normalized_row = {k.lower().strip(): v for k, v in row.items() if k}
+                normalized_rows.append(normalized_row)
+            rows = normalized_rows
+
         for i, row in enumerate(rows, start=2):  # Start at 2 because row 1 is header
             try:
                 # Parse and validate date
-                date_str = row.get('date', '').strip()
+                date_str = row.get('date', row.get('tanggal', '')).strip()
                 if not date_str:
                     raise ValueError("Tanggal kosong")
 

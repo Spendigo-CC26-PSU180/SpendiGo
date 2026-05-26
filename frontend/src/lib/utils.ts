@@ -29,16 +29,23 @@ export const formatDateInput = (date: Date): string => {
 };
 
 export const getRelativeDate = (date: string | Date): string => {
-  const d = new Date(date);
+  // Handle date string to avoid timezone issues
+  const dateStr = typeof date === 'string' ? date.split('T')[0] : date.toISOString().split('T')[0];
   const today = new Date();
+  const todayStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+
   const yesterday = new Date(today);
   yesterday.setDate(yesterday.getDate() - 1);
+  const yesterdayStr = `${yesterday.getFullYear()}-${String(yesterday.getMonth() + 1).padStart(2, '0')}-${String(yesterday.getDate()).padStart(2, '0')}`;
 
-  if (d.toDateString() === today.toDateString()) {
+  if (dateStr === todayStr) {
     return 'Hari ini';
-  } else if (d.toDateString() === yesterday.toDateString()) {
+  } else if (dateStr === yesterdayStr) {
     return 'Kemarin';
   } else {
+    // Parse date parts to avoid timezone issues
+    const [year, month, day] = dateStr.split('-').map(Number);
+    const d = new Date(year, month - 1, day);
     return formatDate(d);
   }
 };

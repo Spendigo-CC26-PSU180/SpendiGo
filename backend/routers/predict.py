@@ -244,7 +244,18 @@ def predict_next_month(
         model = get_model()
         scaler = get_scaler()
         scaler_target = get_scaler_target()
+    except Exception as e:
+        # ML model not available - return graceful response
+        return PredictionResponse(
+            has_prediction=False,
+            months_available=months_available,
+            months_needed=LOOKBACK,
+            predicted_expense=None,
+            breakdown=[],
+            message=f"Fitur prediksi sedang tidak tersedia. Silakan coba lagi nanti."
+        )
 
+    try:
         # Ambil 2 bulan terakhir
         last_n = monthly_df.tail(LOOKBACK)
 
@@ -312,10 +323,16 @@ def predict_next_month(
             message=f"Berdasarkan {months_available} bulan data kamu"
         )
 
-    except FileNotFoundError as e:
-        raise HTTPException(status_code=500, detail=f"Model file not found: {str(e)}")
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Prediksi gagal: {str(e)}")
+        # Prediction failed - return graceful response
+        return PredictionResponse(
+            has_prediction=False,
+            months_available=months_available,
+            months_needed=LOOKBACK,
+            predicted_expense=None,
+            breakdown=[],
+            message=f"Prediksi sementara tidak tersedia. Coba lagi nanti."
+        )
 
 
 # ==================================================
@@ -446,22 +463,25 @@ def model_status(
 
     # Check if model is loadable
     model_loaded = False
+    model_error = None
     try:
         get_model()
+        get_scaler()
+        get_scaler_target()
         model_loaded = True
-    except Exception:
-        pass
+    except Exception as e:
+        model_error = str(e)
 
     return ModelStatusResponse(
         model_loaded=model_loaded,
         lookback_required=LOOKBACK,
         months_available=months_available,
-        ready_for_prediction=months_available >= LOOKBACK,
+        ready_for_prediction=model_loaded and months_available >= LOOKBACK,
         model_performance={
             "mae_rupiah": 278601,
             "rmse_rupiah": 377230,
             "smape_pct": 18.41,
-            "status": "LULUS"
+            "status": "LULUS" if model_loaded else f"NOT_LOADED: {model_error}"
         }
     )
 
@@ -592,7 +612,16 @@ def predict_next_three_months(
         model = get_model()
         scaler = get_scaler()
         scaler_target = get_scaler_target()
+    except Exception as e:
+        # ML model not available - return graceful response
+        return ThreeMonthResponse(
+            has_prediction=False,
+            months_available=months_available,
+            predictions=[],
+            message="Fitur prediksi sedang tidak tersedia. Silakan coba lagi nanti."
+        )
 
+    try:
         # Month labels for Indonesian
         month_names = ["", "Januari", "Februari", "Maret", "April", "Mei", "Juni",
                        "Juli", "Agustus", "September", "Oktober", "November", "Desember"]
@@ -666,7 +695,13 @@ def predict_next_three_months(
         )
 
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Prediksi gagal: {str(e)}")
+        # Prediction failed - return graceful response
+        return ThreeMonthResponse(
+            has_prediction=False,
+            months_available=months_available,
+            predictions=[],
+            message="Prediksi sementara tidak tersedia. Coba lagi nanti."
+        )
 
 
 # ==================================================
@@ -700,7 +735,14 @@ def simulate_what_if(
         model = get_model()
         scaler = get_scaler()
         scaler_target = get_scaler_target()
+    except Exception as e:
+        # ML model not available - return graceful response
+        return WhatIfResponse(
+            has_prediction=False,
+            message="Fitur simulasi sedang tidak tersedia. Silakan coba lagi nanti."
+        )
 
+    try:
         # 1. Calculate BASELINE prediction
         last_n = monthly_df.tail(LOOKBACK).copy()
         X_scaled = scaler.transform(last_n[INPUT_COLS])
@@ -809,7 +851,11 @@ def simulate_what_if(
         )
 
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Simulasi gagal: {str(e)}")
+        # Simulation failed - return graceful response
+        return WhatIfResponse(
+            has_prediction=False,
+            message="Simulasi sementara tidak tersedia. Coba lagi nanti."
+        )
 
 
 # ==================================================
