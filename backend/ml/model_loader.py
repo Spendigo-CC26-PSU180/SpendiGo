@@ -9,15 +9,36 @@ ML_DIR = Path(__file__).parent
 _model = None
 _scaler = None
 _scaler_target = None
+_tf_available = None
+
+
+def _check_tensorflow():
+    """Check if TensorFlow is available."""
+    global _tf_available
+    if _tf_available is None:
+        try:
+            import tensorflow as tf
+            _tf_available = True
+        except ImportError as e:
+            print(f"TensorFlow not available: {e}")
+            _tf_available = False
+        except Exception as e:
+            print(f"TensorFlow error: {e}")
+            _tf_available = False
+    return _tf_available
 
 
 def get_model():
     """Load and cache the LSTM model (singleton pattern)."""
     global _model
     if _model is None:
+        if not _check_tensorflow():
+            raise RuntimeError("TensorFlow tidak tersedia di server ini")
+
         model_path = ML_DIR / "lstm_model_best.keras"
         if not model_path.exists():
             raise FileNotFoundError(f"Model not found: {model_path}")
+
         # Import tensorflow here to avoid slow startup if not needed
         import tensorflow as tf
         _model = tf.keras.models.load_model(str(model_path))
