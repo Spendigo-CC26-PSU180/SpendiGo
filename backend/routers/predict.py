@@ -181,8 +181,8 @@ def get_monthly_aggregates(user_id, db: Session, months: int = 6) -> pd.DataFram
         is_ramadan = 1 if month in [3, 4] else 0
         is_harbolnas_month = 1 if month in [11, 12] else 0
 
-        # Skip bulan dengan expense sangat kecil (tidak aktif)
-        if total_expense < 50000:
+        # Skip bulan tanpa expense sama sekali
+        if total_expense <= 0:
             continue
 
         monthly_rows.append({
@@ -225,8 +225,8 @@ def predict_next_month(
     """
     user_id = current_user.id
 
-    # Ambil data bulanan
-    monthly_df = get_monthly_aggregates(user_id, db, months=6)
+    # Ambil data bulanan (12 bulan terakhir)
+    monthly_df = get_monthly_aggregates(user_id, db, months=12)
     months_available = len(monthly_df)
 
     # Cek data cukup
@@ -639,8 +639,8 @@ def predict_next_three_months(
     """
     user_id = current_user.id
 
-    # Ambil data bulanan
-    monthly_df = get_monthly_aggregates(user_id, db, months=6)
+    # Ambil data bulanan (12 bulan terakhir)
+    monthly_df = get_monthly_aggregates(user_id, db, months=12)
     months_available = len(monthly_df)
 
     # Cek data cukup
@@ -764,8 +764,8 @@ def simulate_what_if(
     """
     user_id = current_user.id
 
-    # Ambil data bulanan
-    monthly_df = get_monthly_aggregates(user_id, db, months=6)
+    # Ambil data bulanan (12 bulan terakhir)
+    monthly_df = get_monthly_aggregates(user_id, db, months=12)
     months_available = len(monthly_df)
 
     # Cek data cukup
