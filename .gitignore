@@ -38,4 +38,5 @@ npm-debug.log*
 # Data Science / Training
 DS/
 *.csv
+!frontend/public/*.csv
 *.h5

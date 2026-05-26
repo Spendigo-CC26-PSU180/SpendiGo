@@ -45,6 +45,14 @@ export const authApi = {
 };
 
 // Transactions API
+export interface ImportResult {
+  success: boolean;
+  total_rows: number;
+  imported: number;
+  failed: number;
+  errors: Array<{ row: number; data: Record<string, string>; error: string }>;
+}
+
 export const transactionsApi = {
   getAll: (params?: {
     page?: number;
@@ -72,6 +80,14 @@ export const transactionsApi = {
   }>) => api.put(`/transactions/${id}`, data),
 
   delete: (id: string) => api.delete(`/transactions/${id}`),
+
+  importCSV: (file: File) => {
+    const formData = new FormData();
+    formData.append('file', file);
+    return api.post<ImportResult>('/transactions/import', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    });
+  },
 };
 
 // Analytics API

@@ -19,7 +19,7 @@ router = APIRouter(prefix="/chat", tags=["chat"])
 settings = get_settings()
 
 # Valid categories
-EXPENSE_CATEGORIES = ["makan", "transport", "belanja online", "kopi", "hiburan", "tagihan", "kos/kontrakan", "kesehatan", "pendidikan", "investasi", "lainnya"]
+EXPENSE_CATEGORIES = ["makan", "transport", "belanja online", "fashion", "kopi", "hiburan", "nongkrong", "top up game", "kuota", "skincare", "kesehatan", "edukasi", "kos/kontrakan", "tagihan", "investasi", "lainnya"]
 INCOME_CATEGORIES = ["gaji", "freelance", "bonus", "hadiah", "investasi", "lainnya"]
 
 # Intent categories for lazy context injection

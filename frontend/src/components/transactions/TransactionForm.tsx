@@ -19,13 +19,16 @@ interface TransactionFormProps {
 export default function TransactionForm({ onSuccess, onCancel, initialData }: TransactionFormProps) {
   const [type, setType] = useState<'expense' | 'income'>(initialData?.type || 'expense');
   const [amount, setAmount] = useState(initialData?.amount?.toString() || '');
-  const [category, setCategory] = useState(initialData?.category || '');
+  const [category, setCategory] = useState(initialData?.category?.toLowerCase() || '');
   const [date, setDate] = useState(initialData?.date || formatDateInput(new Date()));
   const [description, setDescription] = useState(initialData?.description || '');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
   const categories = type === 'income' ? INCOME_CATEGORIES : EXPENSE_CATEGORIES;
+
+  // Check if current category exists in the new type's categories
+  const isCategoryValid = categories.some(c => c.id === category);
 
   const formatAmount = (value: string) => {
     const num = value.replace(/\D/g, '');
@@ -46,8 +49,8 @@ export default function TransactionForm({ onSuccess, onCancel, initialData }: Tr
       return;
     }
 
-    if (!category) {
-      setError('Pilih kategori');
+    if (!category || !isCategoryValid) {
+      setError('Pilih kategori yang valid');
       return;
     }
 
@@ -58,7 +61,7 @@ export default function TransactionForm({ onSuccess, onCancel, initialData }: Tr
         date,
         amount: parseInt(amount),
         type,
-        category,
+        category: category.toLowerCase(),
         description: description || undefined,
       };
 
@@ -83,8 +86,13 @@ export default function TransactionForm({ onSuccess, onCancel, initialData }: Tr
         <button
           type="button"
           onClick={() => {
-            setType('expense');
-            setCategory('');
+            if (type !== 'expense') {
+              setType('expense');
+              // Only reset category if current one doesn't exist in expense categories
+              if (!EXPENSE_CATEGORIES.some(c => c.id === category)) {
+                setCategory('');
+              }
+            }
           }}
           className={`flex-1 py-2.5 rounded-lg text-sm font-medium transition-all ${
             type === 'expense'
@@ -97,8 +105,13 @@ export default function TransactionForm({ onSuccess, onCancel, initialData }: Tr
         <button
           type="button"
           onClick={() => {
-            setType('income');
-            setCategory('');
+            if (type !== 'income') {
+              setType('income');
+              // Only reset category if current one doesn't exist in income categories
+              if (!INCOME_CATEGORIES.some(c => c.id === category)) {
+                setCategory('');
+              }
+            }
           }}
           className={`flex-1 py-2.5 rounded-lg text-sm font-medium transition-all ${
             type === 'income'

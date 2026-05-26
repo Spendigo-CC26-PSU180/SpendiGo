@@ -1,10 +1,13 @@
-from typing import Optional
-from datetime import date
+from typing import Optional, List
+from datetime import date, datetime
 from uuid import UUID
-from fastapi import APIRouter, Depends, HTTPException, status, Query
+from fastapi import APIRouter, Depends, HTTPException, status, Query, UploadFile, File
 from sqlalchemy.orm import Session
 from sqlalchemy import desc
+from pydantic import BaseModel
 import math
+import csv
+import io
 
 from core.deps import get_db, get_current_user
 from models.user import User
@@ -19,6 +22,14 @@ from schemas.transaction import (
 )
 
 router = APIRouter(prefix="/transactions", tags=["transactions"])
+
+
+class ImportResult(BaseModel):
+    success: bool
+    total_rows: int
+    imported: int
+    failed: int
+    errors: List[dict]
 
 
 def validate_category(type: str, category: str) -> bool:
@@ -164,3 +175,128 @@ def delete_transaction(
     db.commit()
 
     return {"message": "deleted"}
+
+
+@router.post("/import", response_model=ImportResult)
+async def import_transactions(
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Import transactions from CSV file.
+
+    Expected CSV format:
+    date,amount,type,category,description
+    2026-01-15,50000,expense,makan,Makan siang
+    2026-01-16,2000000,income,gaji,Gaji bulanan
+
+    - date: YYYY-MM-DD format
+    - amount: positive integer
+    - type: 'income' or 'expense'
+    - category: valid category for the type
+    - description: optional
+    """
+    if not file.filename.endswith('.csv'):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="File harus berformat CSV"
+        )
+
+    try:
+        content = await file.read()
+        # Try to decode with utf-8, fallback to latin-1
+        try:
+            text = content.decode('utf-8')
+        except UnicodeDecodeError:
+            text = content.decode('latin-1')
+
+        # Parse CSV
+        reader = csv.DictReader(io.StringIO(text))
+
+        imported = 0
+        failed = 0
+        errors = []
+        rows = list(reader)
+
+        for i, row in enumerate(rows, start=2):  # Start at 2 because row 1 is header
+            try:
+                # Parse and validate date
+                date_str = row.get('date', '').strip()
+                if not date_str:
+                    raise ValueError("Tanggal kosong")
+
+                # Support multiple date formats
+                parsed_date = None
+                for fmt in ['%Y-%m-%d', '%d/%m/%Y', '%d-%m-%Y', '%Y/%m/%d']:
+                    try:
+                        parsed_date = datetime.strptime(date_str, fmt).date()
+                        break
+                    except ValueError:
+                        continue
+
+                if not parsed_date:
+                    raise ValueError(f"Format tanggal tidak valid: {date_str}")
+
+                # Parse amount
+                amount_str = row.get('amount', '').strip().replace('.', '').replace(',', '')
+                if not amount_str:
+                    raise ValueError("Amount kosong")
+                amount = int(amount_str)
+                if amount <= 0:
+                    raise ValueError("Amount harus positif")
+
+                # Parse type
+                tx_type = row.get('type', '').strip().lower()
+                if tx_type not in ['income', 'expense']:
+                    raise ValueError(f"Type harus 'income' atau 'expense', got: {tx_type}")
+
+                # Parse category
+                category = row.get('category', '').strip().lower()
+                if not category:
+                    raise ValueError("Category kosong")
+
+                if not validate_category(tx_type, category):
+                    valid_cats = EXPENSE_CATEGORIES if tx_type == "expense" else INCOME_CATEGORIES
+                    raise ValueError(f"Category '{category}' tidak valid untuk {tx_type}. Pilihan: {', '.join(valid_cats)}")
+
+                # Parse description (optional)
+                description = row.get('description', '').strip() or None
+
+                # Create transaction
+                transaction = Transaction(
+                    user_id=current_user.id,
+                    date=parsed_date,
+                    amount=amount,
+                    type=tx_type,
+                    category=category,
+                    description=description
+                )
+                db.add(transaction)
+                imported += 1
+
+            except Exception as e:
+                failed += 1
+                errors.append({
+                    "row": i,
+                    "data": dict(row),
+                    "error": str(e)
+                })
+
+        # Commit all successful transactions
+        if imported > 0:
+            db.commit()
+
+        return ImportResult(
+            success=failed == 0,
+            total_rows=len(rows),
+            imported=imported,
+            failed=failed,
+            errors=errors[:10]  # Limit to first 10 errors
+        )
+
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Gagal memproses file: {str(e)}"
+        )

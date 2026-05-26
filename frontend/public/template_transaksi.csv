@@ -1,0 +1,21 @@
+date,amount,type,category,description
+2026-01-01,2000000,income,gaji,Gaji bulan Januari
+2026-01-02,1500000,income,uang saku,Uang saku dari orang tua
+2026-01-03,50000,expense,makan,Makan siang di kantin
+2026-01-04,25000,expense,kopi,Kopi di Starbucks
+2026-01-05,15000,expense,transport,Ojol ke kampus
+2026-01-06,100000,expense,belanja online,Beli case HP di Shopee
+2026-01-07,75000,expense,hiburan,Nonton bioskop
+2026-01-08,150000,expense,fashion,Beli kaos baru
+2026-01-09,50000,expense,nongkrong,Nongkrong sama temen
+2026-01-10,45000,expense,top up game,Top up Mobile Legends
+2026-01-11,50000,expense,kuota,Beli paket data
+2026-01-12,85000,expense,skincare,Beli sunscreen
+2026-01-13,35000,expense,kesehatan,Beli obat flu
+2026-01-14,100000,expense,edukasi,Beli buku kuliah
+2026-01-15,500000,expense,kos/kontrakan,Bayar kos bulan ini
+2026-01-16,150000,expense,tagihan,Bayar listrik
+2026-01-17,200000,expense,investasi,Nabung reksadana
+2026-01-18,30000,expense,lainnya,Pengeluaran lainnya
+2026-01-19,500000,income,freelance,Project desain logo
+2026-01-20,300000,income,part time,Kerja part time weekend
