@@ -10,14 +10,19 @@ interface Insight {
   change_percent?: number;
 }
 
-export default function InsightCards() {
+interface InsightCardsProps {
+  month?: string;
+}
+
+export default function InsightCards({ month }: InsightCardsProps) {
   const [insights, setInsights] = useState<Insight[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     const fetchInsights = async () => {
+      setLoading(true);
       try {
-        const response = await predictApi.getInsights();
+        const response = await predictApi.getInsights(month);
         setInsights(response.data.insights);
       } catch (error) {
         console.error('Failed to fetch insights:', error);
@@ -27,7 +32,7 @@ export default function InsightCards() {
     };
 
     fetchInsights();
-  }, []);
+  }, [month]);
 
   if (loading) {
     return (

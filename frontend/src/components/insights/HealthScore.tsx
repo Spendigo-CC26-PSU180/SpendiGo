@@ -14,14 +14,19 @@ interface HealthScoreData {
   checks: HealthCheck[];
 }
 
-export default function HealthScore() {
+interface HealthScoreProps {
+  month?: string;
+}
+
+export default function HealthScore({ month }: HealthScoreProps) {
   const [data, setData] = useState<HealthScoreData | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     const fetchHealth = async () => {
+      setLoading(true);
       try {
-        const response = await predictApi.getHealthScore();
+        const response = await predictApi.getHealthScore(month);
         setData(response.data);
       } catch (error) {
         console.error('Failed to fetch health score:', error);
@@ -31,7 +36,7 @@ export default function HealthScore() {
     };
 
     fetchHealth();
-  }, []);
+  }, [month]);
 
   if (loading) {
     return <CardSkeleton />;

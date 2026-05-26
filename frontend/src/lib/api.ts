@@ -100,8 +100,8 @@ export interface WhatIfRequest {
 export const predictApi = {
   getNextMonth: () => api.get('/predict/next-month'),
   getNextThreeMonths: () => api.get('/predict/next-three-months'),
-  getInsights: () => api.get('/predict/insights'),
-  getHealthScore: () => api.get('/predict/health-score'),
+  getInsights: (month?: string) => api.get('/predict/insights', { params: { month } }),
+  getHealthScore: (month?: string) => api.get('/predict/health-score', { params: { month } }),
   getBrokeDate: () => api.get('/predict/broke-date'),
   simulateWhatIf: (data: WhatIfRequest) => api.post('/predict/what-if', data),
 };

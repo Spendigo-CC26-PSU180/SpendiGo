@@ -121,11 +121,24 @@ def is_non_financial_question(message: str) -> bool:
 # ==================================================
 
 def build_basic_context(db: Session, user: User) -> str:
-    """Build minimal context for basic queries."""
+    """Build minimal context for basic queries - includes ALL-TIME data."""
     today = date.today()
     this_month_start = date(today.year, today.month, 1)
 
-    # This month's summary only
+    # ALL-TIME totals for accurate balance
+    all_time_income = db.query(func.coalesce(func.sum(Transaction.amount), 0)).filter(
+        Transaction.user_id == user.id,
+        Transaction.type == "income"
+    ).scalar()
+
+    all_time_expense = db.query(func.coalesce(func.sum(Transaction.amount), 0)).filter(
+        Transaction.user_id == user.id,
+        Transaction.type == "expense"
+    ).scalar()
+
+    total_balance = all_time_income - all_time_expense
+
+    # This month's summary
     this_month_income = db.query(func.coalesce(func.sum(Transaction.amount), 0)).filter(
         Transaction.user_id == user.id,
         Transaction.date >= this_month_start,
@@ -138,20 +151,40 @@ def build_basic_context(db: Session, user: User) -> str:
         Transaction.type == "expense"
     ).scalar()
 
-    balance = this_month_income - this_month_expense
+    # Get date range of user's transactions
+    first_transaction = db.query(func.min(Transaction.date)).filter(
+        Transaction.user_id == user.id
+    ).scalar()
+
+    last_transaction = db.query(func.max(Transaction.date)).filter(
+        Transaction.user_id == user.id
+    ).scalar()
+
+    date_range = ""
+    if first_transaction and last_transaction:
+        date_range = f"\n- Data tersedia: {first_transaction.strftime('%d %b %Y')} - {last_transaction.strftime('%d %b %Y')}"
 
     return f"""Data Ringkas:
+- Total Saldo (semua waktu): Rp {total_balance:,}
+- Total Pemasukan: Rp {all_time_income:,}
+- Total Pengeluaran: Rp {all_time_expense:,}{date_range}
 - Pemasukan bulan ini: Rp {this_month_income:,}
-- Pengeluaran bulan ini: Rp {this_month_expense:,}
-- Balance: Rp {balance:,}"""
+- Pengeluaran bulan ini: Rp {this_month_expense:,}"""
 
 
 def build_category_context(db: Session, user: User) -> str:
-    """Build category breakdown context."""
+    """Build category breakdown context - includes ALL available data."""
     today = date.today()
     this_month_start = date(today.year, today.month, 1)
-    last_month_start = (this_month_start - timedelta(days=1)).replace(day=1)
-    last_month_end = this_month_start - timedelta(days=1)
+
+    # ALL-TIME category breakdown (for users with historical data)
+    all_time_cats = db.query(
+        Transaction.category,
+        func.sum(Transaction.amount).label("total")
+    ).filter(
+        Transaction.user_id == user.id,
+        Transaction.type == "expense"
+    ).group_by(Transaction.category).order_by(func.sum(Transaction.amount).desc()).limit(7).all()
 
     # This month by category
     this_month_cats = db.query(
@@ -163,53 +196,56 @@ def build_category_context(db: Session, user: User) -> str:
         Transaction.type == "expense"
     ).group_by(Transaction.category).order_by(func.sum(Transaction.amount).desc()).limit(5).all()
 
-    # Last month by category
-    last_month_cats = db.query(
-        Transaction.category,
-        func.sum(Transaction.amount).label("total")
-    ).filter(
+    # Recent transactions (last 10) for context
+    recent_transactions = db.query(Transaction).filter(
         Transaction.user_id == user.id,
-        Transaction.date >= last_month_start,
-        Transaction.date <= last_month_end,
         Transaction.type == "expense"
-    ).group_by(Transaction.category).order_by(func.sum(Transaction.amount).desc()).limit(5).all()
+    ).order_by(Transaction.date.desc()).limit(10).all()
 
-    context = "\nPengeluaran per Kategori Bulan Ini:\n"
-    for cat in this_month_cats:
-        context += f"- {cat.category}: Rp {cat.total:,}\n"
+    context = ""
 
-    if last_month_cats:
-        context += "\nBulan Lalu:\n"
-        for cat in last_month_cats:
+    # Show all-time breakdown first (most useful)
+    if all_time_cats:
+        context += "\nTotal Pengeluaran per Kategori (Semua Waktu):\n"
+        for cat in all_time_cats:
             context += f"- {cat.category}: Rp {cat.total:,}\n"
+
+    # Show this month only if there's data
+    if this_month_cats:
+        context += "\nBulan Ini:\n"
+        for cat in this_month_cats:
+            context += f"- {cat.category}: Rp {cat.total:,}\n"
+
+    # Show recent transactions for context
+    if recent_transactions:
+        context += "\nTransaksi Terakhir:\n"
+        for t in recent_transactions[:5]:
+            context += f"- {t.date.strftime('%d/%m')}: {t.category} Rp {t.amount:,} ({t.description or '-'})\n"
 
     return context
 
 
 def build_prediction_context(db: Session, user: User) -> str:
-    """Build prediction-related context."""
-    today = date.today()
-
-    # Get last 3 months data
-    three_months_ago = today.replace(day=1) - relativedelta(months=3)
-
+    """Build prediction-related context - all available monthly data."""
+    # Get ALL monthly data for trend analysis
     monthly_totals = db.query(
         func.strftime('%Y-%m', Transaction.date).label('month'),
         func.sum(Transaction.amount).label('total')
     ).filter(
         Transaction.user_id == user.id,
-        Transaction.date >= three_months_ago,
         Transaction.type == "expense"
     ).group_by(func.strftime('%Y-%m', Transaction.date)).order_by('month').all()
 
-    context = "\nTrend Pengeluaran 3 Bulan Terakhir:\n"
+    if not monthly_totals:
+        return "\nBelum ada data transaksi untuk analisis trend."
+
+    context = "\nTrend Pengeluaran Bulanan:\n"
     for row in monthly_totals:
         context += f"- {row.month}: Rp {row.total:,}\n"
 
     # Add average
-    if monthly_totals:
-        avg = sum(r.total for r in monthly_totals) / len(monthly_totals)
-        context += f"\nRata-rata: Rp {avg:,.0f}/bulan"
+    avg = sum(r.total for r in monthly_totals) / len(monthly_totals)
+    context += f"\nRata-rata: Rp {avg:,.0f}/bulan ({len(monthly_totals)} bulan data)"
 
     return context
 

@@ -1,6 +1,6 @@
 from typing import List, Optional
 from datetime import date, timedelta
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 from sqlalchemy import func
 from pydantic import BaseModel
@@ -14,6 +14,23 @@ from models.transaction import Transaction
 from ml.model_loader import get_model, get_scaler, get_scaler_target, INPUT_COLS, LOOKBACK
 
 router = APIRouter(prefix="/predict", tags=["predict"])
+
+
+def parse_month(month_str: Optional[str]) -> tuple[date, date]:
+    """Parse month string (YYYY-MM) to start and end dates"""
+    if month_str:
+        year, month = map(int, month_str.split("-"))
+    else:
+        today = date.today()
+        year, month = today.year, today.month
+
+    start_date = date(year, month, 1)
+    if month == 12:
+        end_date = date(year + 1, 1, 1) - timedelta(days=1)
+    else:
+        end_date = date(year, month + 1, 1) - timedelta(days=1)
+
+    return start_date, end_date
 
 
 # ==================================================
@@ -455,12 +472,12 @@ def model_status(
 
 @router.get("/insights", response_model=InsightsResponse)
 def get_insights(
+    month: Optional[str] = Query(None, pattern=r"^\d{4}-\d{2}$"),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
     """Generate spending insights based on transaction patterns."""
-    today = date.today()
-    this_month_start = date(today.year, today.month, 1)
+    this_month_start, this_month_end = parse_month(month)
     last_month_start = (this_month_start - timedelta(days=1)).replace(day=1)
     last_month_end = this_month_start - timedelta(days=1)
 
@@ -473,6 +490,7 @@ def get_insights(
     ).filter(
         Transaction.user_id == current_user.id,
         Transaction.date >= this_month_start,
+        Transaction.date <= this_month_end,
         Transaction.type == "expense"
     ).group_by(Transaction.category).all()
 
@@ -800,23 +818,25 @@ def simulate_what_if(
 
 @router.get("/health-score", response_model=HealthScore)
 def get_health_score(
+    month: Optional[str] = Query(None, pattern=r"^\d{4}-\d{2}$"),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
     """Calculate financial health score based on spending patterns."""
-    today = date.today()
-    this_month_start = date(today.year, today.month, 1)
+    this_month_start, this_month_end = parse_month(month)
 
     # Get income and expense for this month
     income = db.query(func.coalesce(func.sum(Transaction.amount), 0)).filter(
         Transaction.user_id == current_user.id,
         Transaction.date >= this_month_start,
+        Transaction.date <= this_month_end,
         Transaction.type == "income"
     ).scalar()
 
     expense = db.query(func.coalesce(func.sum(Transaction.amount), 0)).filter(
         Transaction.user_id == current_user.id,
         Transaction.date >= this_month_start,
+        Transaction.date <= this_month_end,
         Transaction.type == "expense"
     ).scalar()
 
@@ -838,6 +858,7 @@ def get_health_score(
     essential_spending = db.query(func.coalesce(func.sum(Transaction.amount), 0)).filter(
         Transaction.user_id == current_user.id,
         Transaction.date >= this_month_start,
+        Transaction.date <= this_month_end,
         Transaction.type == "expense",
         Transaction.category.in_(essential_categories)
     ).scalar()
@@ -854,7 +875,8 @@ def get_health_score(
     # Check 3: Transaction consistency
     transaction_count = db.query(func.count(Transaction.id)).filter(
         Transaction.user_id == current_user.id,
-        Transaction.date >= this_month_start
+        Transaction.date >= this_month_start,
+        Transaction.date <= this_month_end
     ).scalar()
 
     if transaction_count >= 15:

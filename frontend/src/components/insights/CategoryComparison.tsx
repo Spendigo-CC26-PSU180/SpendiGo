@@ -10,7 +10,7 @@ import {
   Legend,
 } from 'recharts';
 import { analyticsApi } from '../../lib/api';
-import { formatRupiah, getCategoryInfo, getCurrentMonth } from '../../lib/utils';
+import { formatRupiah, getCategoryInfo, getCurrentMonth, getMonthName } from '../../lib/utils';
 import { ChartSkeleton } from '../ui/Skeleton';
 
 interface CategoryData {
@@ -20,25 +20,37 @@ interface CategoryData {
   count: number;
 }
 
-export default function CategoryComparison() {
-  const [thisMonth, setThisMonth] = useState<CategoryData[]>([]);
-  const [lastMonth, setLastMonth] = useState<CategoryData[]>([]);
+interface CategoryComparisonProps {
+  month?: string;
+}
+
+export default function CategoryComparison({ month }: CategoryComparisonProps) {
+  const [thisMonthData, setThisMonthData] = useState<CategoryData[]>([]);
+  const [lastMonthData, setLastMonthData] = useState<CategoryData[]>([]);
   const [loading, setLoading] = useState(true);
+  const [monthLabels, setMonthLabels] = useState({ current: 'Bulan ini', prev: 'Bulan lalu' });
 
   useEffect(() => {
     const fetchData = async () => {
+      setLoading(true);
       try {
-        const currentMonth = getCurrentMonth();
-        const [year, month] = currentMonth.split('-').map(Number);
-        const prevMonth = month === 1 ? `${year - 1}-12` : `${year}-${String(month - 1).padStart(2, '0')}`;
+        const currentMonth = month || getCurrentMonth();
+        const [year, monthNum] = currentMonth.split('-').map(Number);
+        const prevMonth = monthNum === 1 ? `${year - 1}-12` : `${year}-${String(monthNum - 1).padStart(2, '0')}`;
+
+        // Set month labels
+        setMonthLabels({
+          current: getMonthName(currentMonth).split(' ')[0], // Just month name
+          prev: getMonthName(prevMonth).split(' ')[0],
+        });
 
         const [thisRes, lastRes] = await Promise.all([
           analyticsApi.getCategory({ month: currentMonth, type: 'expense' }),
           analyticsApi.getCategory({ month: prevMonth, type: 'expense' }),
         ]);
 
-        setThisMonth(thisRes.data);
-        setLastMonth(lastRes.data);
+        setThisMonthData(thisRes.data);
+        setLastMonthData(lastRes.data);
       } catch (error) {
         console.error('Failed to fetch category comparison:', error);
       } finally {
@@ -47,24 +59,24 @@ export default function CategoryComparison() {
     };
 
     fetchData();
-  }, []);
+  }, [month]);
 
   if (loading) {
     return <ChartSkeleton />;
   }
 
   // Combine data for comparison
-  const categories = [...new Set([...thisMonth.map((t) => t.category), ...lastMonth.map((l) => l.category)])];
+  const categories = [...new Set([...thisMonthData.map((t) => t.category), ...lastMonthData.map((l) => l.category)])];
 
   const chartData = categories.slice(0, 6).map((cat) => {
-    const thisData = thisMonth.find((t) => t.category === cat);
-    const lastData = lastMonth.find((l) => l.category === cat);
+    const thisData = thisMonthData.find((t) => t.category === cat);
+    const lastData = lastMonthData.find((l) => l.category === cat);
     const categoryInfo = getCategoryInfo(cat, 'expense');
 
     return {
       category: categoryInfo.label,
-      'Bulan ini': thisData?.total || 0,
-      'Bulan lalu': lastData?.total || 0,
+      [monthLabels.current]: thisData?.total || 0,
+      [monthLabels.prev]: lastData?.total || 0,
     };
   });
 
@@ -113,8 +125,8 @@ export default function CategoryComparison() {
             />
             <Tooltip content={<CustomTooltip />} />
             <Legend />
-            <Bar dataKey="Bulan ini" fill="#6356F5" radius={[0, 4, 4, 0]} />
-            <Bar dataKey="Bulan lalu" fill="#E4E4E7" radius={[0, 4, 4, 0]} />
+            <Bar dataKey={monthLabels.current} fill="#6356F5" radius={[0, 4, 4, 0]} />
+            <Bar dataKey={monthLabels.prev} fill="#E4E4E7" radius={[0, 4, 4, 0]} />
           </BarChart>
         </ResponsiveContainer>
       </div>

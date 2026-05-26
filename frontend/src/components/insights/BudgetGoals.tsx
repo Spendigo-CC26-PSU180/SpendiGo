@@ -20,7 +20,11 @@ interface BudgetData {
   total_spent: number;
 }
 
-export default function BudgetGoals() {
+interface BudgetGoalsProps {
+  month?: string;
+}
+
+export default function BudgetGoals({ month }: BudgetGoalsProps) {
   const [data, setData] = useState<BudgetData | null>(null);
   const [loading, setLoading] = useState(true);
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -30,9 +34,12 @@ export default function BudgetGoals() {
   });
   const [submitting, setSubmitting] = useState(false);
 
+  const selectedMonth = month || getCurrentMonth();
+
   const fetchData = async () => {
+    setLoading(true);
     try {
-      const response = await budgetApi.getGoals();
+      const response = await budgetApi.getGoals(selectedMonth);
       setData(response.data);
     } catch (error) {
       console.error('Failed to fetch budget goals:', error);
@@ -43,7 +50,7 @@ export default function BudgetGoals() {
 
   useEffect(() => {
     fetchData();
-  }, []);
+  }, [month]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -113,7 +120,7 @@ export default function BudgetGoals() {
       </div>
 
       {/* Month indicator */}
-      <p className="text-xs text-gray-500 mb-4">{getMonthName(getCurrentMonth())}</p>
+      <p className="text-xs text-gray-500 mb-4">{getMonthName(selectedMonth)}</p>
 
       {/* Goals List */}
       {data && data.goals.length > 0 ? (
