@@ -142,11 +142,11 @@ def get_monthly_aggregates(user_id, db: Session, months: int = 6) -> pd.DataFram
     today = date.today()
     start_date = (today.replace(day=1) - relativedelta(months=months)).replace(day=1)
 
-    # Query semua transaksi dalam rentang
+    # Query semua transaksi dalam rentang (include bulan berjalan)
     transactions = db.query(Transaction).filter(
         Transaction.user_id == user_id,
         Transaction.date >= start_date,
-        Transaction.date < today.replace(day=1)  # exclude bulan berjalan
+        Transaction.date <= today
     ).all()
 
     if not transactions:
@@ -182,7 +182,7 @@ def get_monthly_aggregates(user_id, db: Session, months: int = 6) -> pd.DataFram
         is_harbolnas_month = 1 if month in [11, 12] else 0
 
         # Skip bulan dengan expense sangat kecil (tidak aktif)
-        if total_expense < 300000:
+        if total_expense < 50000:
             continue
 
         monthly_rows.append({
