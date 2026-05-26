@@ -218,7 +218,7 @@ def get_spending_dna(
         Transaction.type == "expense"
     ).group_by(Transaction.date).all()
 
-    daily_amounts = [d.total for d in daily_expenses]
+    daily_amounts = [float(d.total) for d in daily_expenses]
     variance = 0
     if len(daily_amounts) > 1:
         mean = sum(daily_amounts) / len(daily_amounts)
