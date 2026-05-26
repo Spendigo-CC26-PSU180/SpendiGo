@@ -388,6 +388,7 @@ def predict_broke_date(
         "hiburan": "Cari hiburan gratis dulu minggu ini",
         "fashion": "Skip belanja baju dulu bulan ini",
         "nongkrong": "Kurangi frekuensi nongkrong minggu ini",
+        "investasi": "Bagus! Investasi penting, tapi pastikan kebutuhan pokok terpenuhi dulu",
     }
 
     tips = []

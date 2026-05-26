@@ -69,6 +69,7 @@ export const EXPENSE_CATEGORIES = [
   { id: 'edukasi', label: 'Edukasi', icon: '📚' },
   { id: 'kos/kontrakan', label: 'Kos/Kontrakan', icon: '🏠' },
   { id: 'tagihan', label: 'Tagihan', icon: '📄' },
+  { id: 'investasi', label: 'Investasi', icon: '📈' },
   { id: 'lainnya', label: 'Lainnya', icon: '📦' },
 ];
 

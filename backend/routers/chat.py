@@ -19,7 +19,7 @@ router = APIRouter(prefix="/chat", tags=["chat"])
 settings = get_settings()
 
 # Valid categories
-EXPENSE_CATEGORIES = ["makan", "transport", "belanja online", "kopi", "hiburan", "tagihan", "kos/kontrakan", "kesehatan", "pendidikan", "lainnya"]
+EXPENSE_CATEGORIES = ["makan", "transport", "belanja online", "kopi", "hiburan", "tagihan", "kos/kontrakan", "kesehatan", "pendidikan", "investasi", "lainnya"]
 INCOME_CATEGORIES = ["gaji", "freelance", "bonus", "hadiah", "investasi", "lainnya"]
 
 # Intent categories for lazy context injection
@@ -28,7 +28,7 @@ INTENTS = {
     "category": ["kategori", "pengeluaran", "spending", "habis", "boros", "hemat", "makan", "kopi", "transport", "belanja", "tagihan"],
     "prediction": ["prediksi", "forecast", "bulan depan", "perkiraan", "estimasi", "akan"],
     "broke": ["bokek", "habis", "cukup", "sampai kapan", "tanggal berapa", "broke"],
-    "transaction": ["catat", "simpan", "beli", "bayar", "gaji", "dapat", "terima", "belanja", "ongkos", "naik", "jajan"],
+    "transaction": ["catat", "simpan", "beli", "bayar", "gaji", "dapat", "terima", "belanja", "ongkos", "naik", "jajan", "investasi", "invest", "saham", "reksadana", "crypto"],
     "advice": ["tips", "saran", "gimana", "bagaimana", "cara", "strategi", "rekomendasi"],
 }
 

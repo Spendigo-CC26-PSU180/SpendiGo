@@ -7,7 +7,7 @@ from datetime import date, datetime
 EXPENSE_CATEGORIES = [
     "makan", "transport", "belanja online", "fashion", "kopi",
     "hiburan", "nongkrong", "top up game", "kuota", "skincare",
-    "kesehatan", "edukasi", "kos/kontrakan", "tagihan", "lainnya"
+    "kesehatan", "edukasi", "kos/kontrakan", "tagihan", "investasi", "lainnya"
 ]
 
 INCOME_CATEGORIES = [

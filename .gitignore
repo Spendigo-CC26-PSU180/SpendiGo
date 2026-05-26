@@ -34,3 +34,8 @@ npm-debug.log*
 # Python
 *.egg-info/
 .eggs/
+
+# Data Science / Training
+DS/
+*.csv
+*.h5
