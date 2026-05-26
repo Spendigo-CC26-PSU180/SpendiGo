@@ -487,6 +487,50 @@ def model_status(
 
 
 # ==================================================
+# DEBUG ENDPOINT - Check user data for prediction
+# ==================================================
+
+@router.get("/debug-data")
+def debug_prediction_data(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """Debug endpoint to check user's data for prediction."""
+    user_id = current_user.id
+    today = date.today()
+
+    # Get all transactions
+    all_transactions = db.query(Transaction).filter(
+        Transaction.user_id == user_id
+    ).all()
+
+    # Group by month
+    monthly_summary = {}
+    for t in all_transactions:
+        month_key = f"{t.date.year}-{t.date.month:02d}"
+        if month_key not in monthly_summary:
+            monthly_summary[month_key] = {"income": 0, "expense": 0, "count": 0}
+        if t.type == "income":
+            monthly_summary[month_key]["income"] += t.amount
+        else:
+            monthly_summary[month_key]["expense"] += t.amount
+        monthly_summary[month_key]["count"] += 1
+
+    # Get aggregated data
+    monthly_df = get_monthly_aggregates(user_id, db, months=12)
+
+    return {
+        "today": today.isoformat(),
+        "total_transactions": len(all_transactions),
+        "monthly_summary": monthly_summary,
+        "aggregated_months": len(monthly_df),
+        "aggregated_data": monthly_df.to_dict('records') if len(monthly_df) > 0 else [],
+        "lookback_required": LOOKBACK,
+        "ready_for_prediction": len(monthly_df) >= LOOKBACK
+    }
+
+
+# ==================================================
 # ENDPOINT 4 - Insights (existing, kept for compatibility)
 # ==================================================
 
