@@ -73,9 +73,9 @@ INPUT_COLS = [
     'total_income',        # total pemasukan bulan itu
     'net',                 # total_income - total_expense
     'frekuensi_exp',       # jumlah transaksi expense bulan itu
-    'frekuensi_inc',       # jumlah transaksi income bulan itu
     'avg_expense',         # rata-rata per transaksi expense
     'max_expense',         # expense terbesar bulan itu
+    'frekuensi_inc',       # jumlah transaksi income bulan itu
 ]
 
 LOOKBACK = 2  # 2 bulan historis required for prediction
