@@ -822,7 +822,7 @@ def simulate_what_if(
             if cat_total > 0:
                 # Calculate impact as percentage of total expense
                 avg_month_expense = simulated_data['total_expense'].mean()
-                cat_impact = (cat_total / 2) * (change_pct / 100)  # divide by 2 for monthly avg
+                cat_impact = (float(cat_total) / 2) * (change_pct / 100)  # divide by 2 for monthly avg
                 total_category_impact += cat_impact
 
         # Apply category impact to expense
