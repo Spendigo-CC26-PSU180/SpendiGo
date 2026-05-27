@@ -174,12 +174,10 @@ def get_monthly_aggregates(user_id, db: Session, months: int = 6) -> pd.DataFram
         total_expense = expense_rows['amount'].sum() if len(expense_rows) > 0 else 0
         total_income = income_rows['amount'].sum() if len(income_rows) > 0 else 0
         frekuensi_exp = len(expense_rows)
+        frekuensi_inc = len(income_rows)
         avg_expense = expense_rows['amount'].mean() if len(expense_rows) > 0 else 0
+        max_expense = expense_rows['amount'].max() if len(expense_rows) > 0 else 0
         net = total_income - total_expense
-
-        # Seasonal flags
-        is_ramadan = 1 if month in [3, 4] else 0
-        is_harbolnas_month = 1 if month in [11, 12] else 0
 
         # Skip bulan tanpa expense sama sekali
         if total_expense <= 0:
@@ -192,9 +190,9 @@ def get_monthly_aggregates(user_id, db: Session, months: int = 6) -> pd.DataFram
             'total_income': total_income,
             'net': net,
             'frekuensi_exp': frekuensi_exp,
+            'frekuensi_inc': frekuensi_inc,
             'avg_expense': avg_expense,
-            'is_ramadan': is_ramadan,
-            'is_harbolnas_month': is_harbolnas_month,
+            'max_expense': max_expense,
         })
 
     if not monthly_rows:
@@ -710,8 +708,6 @@ def predict_next_three_months(
             new_row['total_expense'] = pred_rp
             new_row['year'] = target_month.year
             new_row['month'] = target_month.month
-            new_row['is_ramadan'] = 1 if target_month.month in [3, 4] else 0
-            new_row['is_harbolnas_month'] = 1 if target_month.month in [11, 12] else 0
 
             # Shift window: drop first, add new
             current_data = pd.concat([
