@@ -324,14 +324,17 @@ def predict_next_month(
         )
 
     except Exception as e:
-        # Prediction failed - return graceful response
+        # Prediction failed - return graceful response with error details
+        import traceback
+        print(f"Prediction error: {e}")
+        print(traceback.format_exc())
         return PredictionResponse(
             has_prediction=False,
             months_available=months_available,
             months_needed=LOOKBACK,
             predicted_expense=None,
             breakdown=[],
-            message=f"Prediksi sementara tidak tersedia. Coba lagi nanti."
+            message=f"Prediksi error: {str(e)}"
         )
 
 
@@ -739,12 +742,15 @@ def predict_next_three_months(
         )
 
     except Exception as e:
-        # Prediction failed - return graceful response
+        # Prediction failed - return graceful response with error details
+        import traceback
+        print(f"Three-month prediction error: {e}")
+        print(traceback.format_exc())
         return ThreeMonthResponse(
             has_prediction=False,
             months_available=months_available,
             predictions=[],
-            message="Prediksi sementara tidak tersedia. Coba lagi nanti."
+            message=f"Prediksi error: {str(e)}"
         )
 
 
@@ -895,10 +901,13 @@ def simulate_what_if(
         )
 
     except Exception as e:
-        # Simulation failed - return graceful response
+        # Simulation failed - return graceful response with error details
+        import traceback
+        print(f"What-if simulation error: {e}")
+        print(traceback.format_exc())
         return WhatIfResponse(
             has_prediction=False,
-            message="Simulasi sementara tidak tersedia. Coba lagi nanti."
+            message=f"Simulasi error: {str(e)}"
         )
 
 
