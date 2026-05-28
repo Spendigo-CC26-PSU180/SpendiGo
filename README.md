@@ -20,6 +20,8 @@ Personal Finance Web App untuk Gen Z Indonesia.
 - SQLAlchemy + Alembic
 - JWT Authentication
 - Pydantic
+- TensorFlow/Keras (LSTM Model)
+- OpenAI API (Chat AI)
 
 ## Quick Start
 
@@ -93,10 +95,43 @@ spendigo/
 
 ## Features
 
-- **Dashboard** - Ringkasan keuangan dengan chart
-- **Transaksi** - CRUD transaksi dengan filter
-- **AI Insights** - Prediksi pengeluaran & health score
-- **Responsive** - Mobile-first design
+### Dashboard
+- **Ringkasan Keuangan** - Total pemasukan, pengeluaran, dan saldo
+- **Chart Tren Harian** - Visualisasi pengeluaran 30 hari terakhir
+- **Kategori Breakdown** - Pie chart pengeluaran per kategori
+- **Transaksi Terakhir** - Quick view 5 transaksi terbaru
+- **Weekly Wrapped** - Ringkasan mingguan dengan insight
+
+### Transaksi
+- **CRUD Transaksi** - Tambah, edit, hapus transaksi
+- **Filter & Pagination** - Filter by tipe, kategori, bulan
+- **CSV Import** - Upload bulk transaksi via CSV
+- **CSV Template** - Template siap pakai untuk import
+
+### AI Features (LSTM Model)
+- **Prediksi Bulan Depan** - Prediksi pengeluaran bulan depan dengan confidence score
+- **Prediksi 3 Bulan** - Rolling prediction untuk 3 bulan ke depan
+- **What-If Simulator** - Simulasi perubahan income/expense dan dampaknya
+- **Spending DNA** - Analisis pola pengeluaran (Hedonist, Penabung, Seimbang, Unpredictable)
+- **Broke Date** - Prediksi tanggal uang habis berdasarkan spending rate
+- **Health Score** - Skor kesehatan finansial dengan breakdown checks
+
+### Chat AI (Spen)
+- **Financial Assistant** - Chat dengan AI untuk pertanyaan keuangan
+- **Context-Aware** - Memahami data transaksi user
+- **Transaction Recording** - Catat transaksi via chat natural language
+- **Spending Advice** - Tips dan saran pengelolaan keuangan
+
+### Insights Page
+- **Month Picker** - Navigasi data per bulan
+- **Category Comparison** - Perbandingan pengeluaran vs bulan lalu
+- **Budget Goals** - Set dan track target budget per kategori
+- **Insight Cards** - Warning dan success notifications
+
+### Other Features
+- **JWT Authentication** - Secure login/register
+- **Responsive Design** - Mobile-first, works on all devices
+- **Dark/Light Mode Ready** - CSS variables for theming
 
 ## API Endpoints
 
@@ -106,20 +141,35 @@ spendigo/
 - `GET /auth/me` - Get current user
 
 ### Transactions
-- `GET /transactions` - List transactions (with filters)
+- `GET /transactions` - List transactions (with filters & pagination)
 - `POST /transactions` - Create transaction
+- `POST /transactions/import` - Import transactions from CSV
 - `PUT /transactions/:id` - Update transaction
 - `DELETE /transactions/:id` - Delete transaction
 
 ### Analytics
-- `GET /analytics/summary` - Monthly summary
-- `GET /analytics/category` - Category breakdown
-- `GET /analytics/trend` - Daily trend
+- `GET /analytics/summary` - Monthly summary (income, expense, balance)
+- `GET /analytics/category` - Category breakdown with percentages
+- `GET /analytics/trend` - Daily trend data (30/60/90 days)
+- `GET /analytics/spending-dna` - Spending personality analysis
+- `GET /analytics/weekly-wrapped` - Weekly spending summary
 
-### Predict (AI)
-- `GET /predict/next-month` - Expense prediction
-- `GET /predict/insights` - Spending insights
-- `GET /predict/health-score` - Financial health score
+### Predict (AI/ML)
+- `GET /predict/next-month` - LSTM expense prediction for next month
+- `GET /predict/next-three-months` - Rolling 3-month prediction
+- `GET /predict/broke-date` - Predict when money runs out
+- `GET /predict/insights` - Spending insights & warnings
+- `GET /predict/health-score` - Financial health score (0-100)
+- `GET /predict/status` - ML model status check
+- `POST /predict/what-if` - What-if simulation
+
+### Chat
+- `POST /chat` - Chat with Spen AI assistant
+
+### Budget
+- `GET /budget` - Get budget goals for month
+- `POST /budget` - Create/update budget goal
+- `DELETE /budget/:id` - Delete budget goal
 
 ## Environment Variables
 
@@ -139,10 +189,10 @@ PUBLIC_API_URL=http://localhost:8000
 ## Categories
 
 ### Expense
-makan, transport, belanja online, fashion, kopi, hiburan, nongkrong, top up game, kuota, skincare, kesehatan, edukasi, kos/kontrakan, tagihan, lainnya
+makan, transport, belanja online, fashion, kopi, hiburan, nongkrong, top up game, kuota, skincare, kesehatan, edukasi, kos/kontrakan, tagihan, investasi, lainnya
 
 ### Income
-uang saku, gaji, freelance, part time, beasiswa, transfer masuk, lainnya
+gaji, freelance, bonus, hadiah, investasi, lainnya
 
 ---
 
