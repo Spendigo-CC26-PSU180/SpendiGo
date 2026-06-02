@@ -43,7 +43,7 @@ docker-compose up -d
 ### 2. Setup Backend
 
 ```bash
-cd backend-express
+cd backend
 
 # Install dependencies
 npm install
@@ -90,7 +90,7 @@ spendigo/
 │   │   └── styles/             # Global CSS
 │   └── public/                 # Static assets
 │
-├── backend-express/            # Express.js project
+├── backend/                    # Express.js project
 │   ├── src/
 │   │   ├── app.js              # App entry
 │   │   ├── routes/             # API endpoints
@@ -225,7 +225,7 @@ gaji, freelance, bonus, hadiah, investasi, lainnya
 
 ### Step 3: Deploy Backend
 1. Dari Railway dashboard, klik "New Service" → "GitHub Repo"
-2. Pilih repo ini dan set **Root Directory** ke `backend-express`
+2. Pilih repo ini dan set **Root Directory** ke `backend`
 3. Add environment variables:
    ```
    DATABASE_URL=<copy dari PostgreSQL>
@@ -262,7 +262,7 @@ gaji, freelance, bonus, hadiah, investasi, lainnya
 ## ML Model
 
 ### Pre-trained Model
-Model LSTM tersedia di `backend-express/ml/`:
+Model LSTM tersedia di `backend/ml/`:
 - `lstm_model_best.keras` - Trained LSTM model (Functional API)
 - `scaler.pkl` - Feature scaler (MinMaxScaler)
 - `scaler_target.pkl` - Target scaler
