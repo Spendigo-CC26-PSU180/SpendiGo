@@ -1,4 +1,4 @@
-# Spendigo
+# SpendiGo
 
 Personal Finance Web App untuk Gen Z Indonesia.
 
@@ -15,19 +15,22 @@ Personal Finance Web App untuk Gen Z Indonesia.
 - Axios
 
 ### Backend
-- FastAPI (Python)
+- Express.js (Node.js)
 - PostgreSQL
-- SQLAlchemy + Alembic
+- Prisma ORM
 - JWT Authentication
-- Pydantic
-- TensorFlow/Keras (LSTM Model)
 - OpenAI API (Chat AI)
+
+### Machine Learning
+- TensorFlow/Keras (LSTM Model)
+- Functional API Architecture
+- Custom Training Callbacks
+- TensorBoard Integration
 
 ## Quick Start
 
 ### Prerequisites
 - Docker & Docker Compose
-- **Python 3.10 - 3.12** (Python 3.13+ belum fully supported)
 - Node.js 18+
 - npm or pnpm
 
@@ -40,21 +43,26 @@ docker-compose up -d
 ### 2. Setup Backend
 
 ```bash
-cd backend
-
-# Create virtual environment
-python -m venv venv
-source venv/bin/activate  # On Windows: venv\Scripts\activate
+cd backend-express
 
 # Install dependencies
-pip install -r requirements.txt
+npm install
+
+# Setup environment
+cp .env.example .env
+# Edit .env dengan konfigurasi database dan API keys
+
+# Generate Prisma client
+npm run db:generate
+
+# Push schema ke database
+npm run db:push
 
 # Run the server
-uvicorn main:app --reload --host 0.0.0.0 --port 8000
+npm run dev
 ```
 
 Backend akan berjalan di `http://localhost:8000`
-Dokumentasi API: `http://localhost:8000/docs`
 
 ### 3. Setup Frontend
 
@@ -82,13 +90,21 @@ spendigo/
 │   │   └── styles/             # Global CSS
 │   └── public/                 # Static assets
 │
-├── backend/                    # FastAPI project
-│   ├── main.py                 # App entry
-│   ├── database.py             # SQLAlchemy setup
-│   ├── models/                 # Database models
-│   ├── schemas/                # Pydantic schemas
-│   ├── routers/                # API endpoints
-│   └── core/                   # Config, security, deps
+├── backend-express/            # Express.js project
+│   ├── src/
+│   │   ├── app.js              # App entry
+│   │   ├── routes/             # API endpoints
+│   │   ├── middleware/         # Auth, error handling
+│   │   ├── config/             # Config & database
+│   │   └── utils/              # Utilities
+│   ├── prisma/                 # Prisma schema
+│   └── ml/                     # ML model files
+│
+├── DS/                         # Data Science (gitignored)
+│   ├── train_lstm.ipynb        # Training notebook
+│   ├── lstm_model_best.keras   # Trained model
+│   ├── scaler.pkl              # Feature scaler
+│   └── logs/tensorboard/       # Training logs
 │
 └── docker-compose.yml          # PostgreSQL
 ```
@@ -176,9 +192,10 @@ spendigo/
 ### Backend (.env)
 ```
 DATABASE_URL=postgresql://spendigo:password@localhost:5432/spendigo_db
-SECRET_KEY=your-secret-key
-ALGORITHM=HS256
+SECRET_KEY=your-secret-key-min-32-characters
 ACCESS_TOKEN_EXPIRE_MINUTES=10080
+OPENAI_API_KEY=sk-your-openai-api-key
+PORT=8000
 ```
 
 ### Frontend (.env)
@@ -208,14 +225,14 @@ gaji, freelance, bonus, hadiah, investasi, lainnya
 
 ### Step 3: Deploy Backend
 1. Dari Railway dashboard, klik "New Service" → "GitHub Repo"
-2. Pilih repo ini dan set **Root Directory** ke `backend`
+2. Pilih repo ini dan set **Root Directory** ke `backend-express`
 3. Add environment variables:
    ```
    DATABASE_URL=<copy dari PostgreSQL>
    SECRET_KEY=<generate random string 32+ chars>
-   FRONTEND_URL=<URL frontend setelah deploy, e.g. https://spendigo-frontend.up.railway.app>
+   OPENAI_API_KEY=<your OpenAI API key>
    ```
-4. Railway akan auto-detect Python dan deploy
+4. Railway akan auto-detect Node.js dan deploy
 
 ### Step 4: Deploy Frontend
 1. Klik "New Service" → "GitHub Repo"
@@ -233,18 +250,79 @@ gaji, freelance, bonus, hadiah, investasi, lainnya
 |----------|-------------|
 | DATABASE_URL | PostgreSQL connection string (dari Railway PostgreSQL) |
 | SECRET_KEY | JWT secret key (min 32 chars) |
-| FRONTEND_URL | Frontend URL untuk CORS |
+| OPENAI_API_KEY | OpenAI API key untuk Chat Spen |
 
 **Frontend:**
 | Variable | Description |
 |----------|-------------|
 | PUBLIC_API_URL | Backend API URL |
 
-### Tips
-- Pastikan backend sudah live sebelum deploy frontend
-- Update FRONTEND_URL di backend setelah frontend URL tersedia
-- Gunakan Railway's auto-generated domain atau custom domain
+---
+
+## ML Model
+
+### Pre-trained Model
+Model LSTM tersedia di `backend-express/ml/`:
+- `lstm_model_best.keras` - Trained LSTM model (Functional API)
+- `scaler.pkl` - Feature scaler (MinMaxScaler)
+- `scaler_target.pkl` - Target scaler
+
+### Model Architecture
+- Input: 7 features x 2 timesteps (LOOKBACK)
+- LSTM Layer 1: 32 units, return_sequences=True
+- Dropout: 0.3
+- LSTM Layer 2: 16 units
+- Dropout: 0.3
+- Dense: 8 units, ReLU
+- Output: 1 unit (predicted expense)
+
+### Model Input Features
+1. `total_expense` - Total pengeluaran bulan
+2. `total_income` - Total pemasukan bulan
+3. `net` - Selisih income - expense
+4. `frekuensi_exp` - Jumlah transaksi expense
+5. `avg_expense` - Rata-rata per transaksi
+6. `max_expense` - Expense terbesar
+7. `frekuensi_inc` - Jumlah transaksi income
+
+### Training Notebook
+Training notebook dengan TensorBoard logging tersedia di `DS/train_lstm.ipynb`:
+- Functional API architecture
+- Custom Training Callback
+- TensorBoard integration
+- tf.GradientTape demonstration
 
 ---
 
-Built with Astro, FastAPI, and PostgreSQL
+## Troubleshooting
+
+### Database Connection Error
+```bash
+# Cek PostgreSQL running
+docker ps
+
+# Restart database
+docker-compose down && docker-compose up -d
+```
+
+### CORS Error di Frontend
+Pastikan backend CORS sudah configured untuk frontend URL.
+
+### Prediction Not Working
+1. Cek minimal punya 2 bulan data transaksi
+2. Cek endpoint `/predict/status` untuk ML model status
+3. Lihat logs backend untuk error detail
+
+---
+
+## Contributing
+
+1. Fork repository
+2. Create feature branch (`git checkout -b feature/AmazingFeature`)
+3. Commit changes (`git commit -m 'Add AmazingFeature'`)
+4. Push to branch (`git push origin feature/AmazingFeature`)
+5. Open Pull Request
+
+---
+
+Built with Astro, Express.js, Prisma, and PostgreSQL
