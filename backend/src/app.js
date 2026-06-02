@@ -1,4 +1,7 @@
-require('dotenv').config();
+// Only load dotenv in development
+if (process.env.NODE_ENV !== 'production') {
+  require('dotenv').config();
+}
 
 const express = require('express');
 const cors = require('cors');
@@ -69,6 +72,8 @@ app.use((req, res) => {
 
 // Start server
 const PORT = process.env.PORT || 8000;
+
+console.log(`Environment PORT: ${process.env.PORT}, Using PORT: ${PORT}`);
 
 app.listen(PORT, '0.0.0.0', () => {
   console.log(`🚀 Spendigo API running on port ${PORT}`);
