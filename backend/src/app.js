@@ -68,19 +68,10 @@ app.use((req, res) => {
 });
 
 // Start server
-const PORT = config.PORT;
+const PORT = process.env.PORT || 8000;
 
-app.listen(PORT, () => {
-  console.log(`
-╔═══════════════════════════════════════════════╗
-║                                               ║
-║   🚀 Spendigo API Server                      ║
-║                                               ║
-║   Running on: http://localhost:${PORT}          ║
-║   Environment: ${process.env.NODE_ENV || 'development'}                  ║
-║                                               ║
-╚═══════════════════════════════════════════════╝
-  `);
+app.listen(PORT, '0.0.0.0', () => {
+  console.log(`🚀 Spendigo API running on port ${PORT}`);
 });
 
 module.exports = app;
