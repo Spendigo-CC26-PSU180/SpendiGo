@@ -100,4 +100,50 @@ router.get('/me', authMiddleware, async (req, res) => {
   });
 });
 
+// POST /auth/change-password
+router.post('/change-password', authMiddleware, async (req, res, next) => {
+  try {
+    const { current_password, new_password, confirm_password } = req.body;
+    const userId = req.user.id;
+
+    // Validate required fields
+    if (!current_password || !new_password || !confirm_password) {
+      return res.status(400).json({ detail: 'Semua field wajib diisi' });
+    }
+
+    // Validate new password matches confirmation
+    if (new_password !== confirm_password) {
+      return res.status(400).json({ detail: 'Password baru tidak cocok' });
+    }
+
+    // Validate minimum length
+    if (new_password.length < 8) {
+      return res.status(400).json({ detail: 'Password minimal 8 karakter' });
+    }
+
+    // Get current user with password
+    const user = await prisma.user.findUnique({ where: { id: userId } });
+    if (!user) {
+      return res.status(404).json({ detail: 'User tidak ditemukan' });
+    }
+
+    // Verify current password
+    const isValid = await verifyPassword(current_password, user.hashedPassword);
+    if (!isValid) {
+      return res.status(401).json({ detail: 'Password saat ini salah' });
+    }
+
+    // Hash and update new password
+    const newHashedPassword = await hashPassword(new_password);
+    await prisma.user.update({
+      where: { id: userId },
+      data: { hashedPassword: newHashedPassword },
+    });
+
+    res.json({ detail: 'Password berhasil diubah' });
+  } catch (error) {
+    next(error);
+  }
+});
+
 module.exports = router;

@@ -42,6 +42,9 @@ export const authApi = {
     api.post('/auth/login', data),
 
   getMe: () => api.get('/auth/me'),
+
+  changePassword: (data: { current_password: string; new_password: string; confirm_password: string }) =>
+    api.post('/auth/change-password', data),
 };
 
 // Transactions API
