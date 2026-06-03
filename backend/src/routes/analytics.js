@@ -11,7 +11,8 @@ router.get('/summary', authMiddleware, async (req, res, next) => {
     const { startDate, endDate } = parseMonth(month);
     const daysInPeriod = Math.ceil((endDate - startDate) / (1000 * 60 * 60 * 24)) + 1;
 
-    const transactions = await prisma.transaction.groupBy({
+    // Get MONTHLY transactions (for display)
+    const monthlyTransactions = await prisma.transaction.groupBy({
       by: ['type'],
       where: {
         userId: req.user.id,
@@ -21,26 +22,71 @@ router.get('/summary', authMiddleware, async (req, res, next) => {
       _count: true,
     });
 
-    let totalIncome = 0n;
-    let totalExpense = 0n;
+    let monthlyIncome = 0n;
+    let monthlyExpense = 0n;
     let transactionCount = 0;
 
-    for (const t of transactions) {
+    for (const t of monthlyTransactions) {
+      if (t.type === 'income') {
+        monthlyIncome = t._sum.amount || 0n;
+      } else {
+        monthlyExpense = t._sum.amount || 0n;
+      }
+      transactionCount += t._count;
+    }
+
+    // Get CUMULATIVE balance (all-time)
+    const allTimeTransactions = await prisma.transaction.groupBy({
+      by: ['type'],
+      where: { userId: req.user.id },
+      _sum: { amount: true },
+    });
+
+    let totalIncome = 0n;
+    let totalExpense = 0n;
+
+    for (const t of allTimeTransactions) {
       if (t.type === 'income') {
         totalIncome = t._sum.amount || 0n;
       } else {
         totalExpense = t._sum.amount || 0n;
       }
-      transactionCount += t._count;
     }
 
-    const avgDailyExpense = daysInPeriod > 0 ? Number(totalExpense) / daysInPeriod : 0;
+    const totalBalance = Number(totalIncome - totalExpense);
+
+    // Get avg daily expense from LAST 30 DAYS
+    const thirtyDaysAgo = new Date();
+    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+    thirtyDaysAgo.setHours(0, 0, 0, 0);
+
+    const recentExpense = await prisma.transaction.aggregate({
+      where: {
+        userId: req.user.id,
+        type: 'expense',
+        date: { gte: thirtyDaysAgo },
+      },
+      _sum: { amount: true },
+    });
+
+    const avgDailyExpense = Number(recentExpense._sum.amount || 0) / 30;
 
     res.json({
-      total_income: Number(totalIncome),
-      total_expense: Number(totalExpense),
-      balance: Number(totalIncome - totalExpense),
+      // Monthly stats (for current month display)
+      monthly_income: Number(monthlyIncome),
+      monthly_expense: Number(monthlyExpense),
+      monthly_net: Number(monthlyIncome - monthlyExpense),
       transaction_count: transactionCount,
+
+      // Cumulative (real balance)
+      total_balance: totalBalance,
+
+      // Legacy fields (for backward compatibility)
+      total_income: Number(monthlyIncome),
+      total_expense: Number(monthlyExpense),
+      balance: totalBalance,
+
+      // Average from last 30 days
       avg_daily_expense: Math.round(avgDailyExpense),
     });
   } catch (error) {
@@ -94,6 +140,26 @@ router.get('/trend', authMiddleware, async (req, res, next) => {
     startDate.setDate(startDate.getDate() - days + 1);
     startDate.setHours(0, 0, 0, 0);
 
+    // Get INITIAL BALANCE before the period (cumulative up to startDate)
+    const previousTransactions = await prisma.transaction.groupBy({
+      by: ['type'],
+      where: {
+        userId: req.user.id,
+        date: { lt: startDate },
+      },
+      _sum: { amount: true },
+    });
+
+    let initialBalance = 0;
+    for (const t of previousTransactions) {
+      if (t.type === 'income') {
+        initialBalance += Number(t._sum.amount || 0);
+      } else {
+        initialBalance -= Number(t._sum.amount || 0);
+      }
+    }
+
+    // Get transactions within the period
     const transactions = await prisma.transaction.findMany({
       where: {
         userId: req.user.id,
@@ -112,9 +178,9 @@ router.get('/trend', authMiddleware, async (req, res, next) => {
       dataMap[dateKey][t.type] += Number(t.amount);
     }
 
-    // Generate complete date range
+    // Generate complete date range with CUMULATIVE balance
     const result = [];
-    let cumulativeBalance = 0;
+    let cumulativeBalance = initialBalance; // Start from previous balance!
     const current = new Date(startDate);
 
     while (current <= endDate) {
@@ -145,7 +211,7 @@ router.get('/spending-dna', authMiddleware, async (req, res, next) => {
     const startDate = new Date();
     startDate.setDate(startDate.getDate() - 30);
 
-    // Get income and expense totals
+    // Get income and expense totals (last 30 days)
     const totals = await prisma.transaction.groupBy({
       by: ['type'],
       where: {
@@ -153,16 +219,25 @@ router.get('/spending-dna', authMiddleware, async (req, res, next) => {
         date: { gte: startDate, lte: endDate },
       },
       _sum: { amount: true },
+      _count: true,
     });
 
     let totalIncome = 0;
     let totalExpense = 0;
+    let incomeCount = 0;
+    let expenseCount = 0;
+
     for (const t of totals) {
-      if (t.type === 'income') totalIncome = Number(t._sum.amount || 0);
-      else totalExpense = Number(t._sum.amount || 0);
+      if (t.type === 'income') {
+        totalIncome = Number(t._sum.amount || 0);
+        incomeCount = t._count;
+      } else {
+        totalExpense = Number(t._sum.amount || 0);
+        expenseCount = t._count;
+      }
     }
 
-    // Get top categories
+    // Get ALL categories with amounts
     const categories = await prisma.transaction.groupBy({
       by: ['category'],
       where: {
@@ -172,10 +247,9 @@ router.get('/spending-dna', authMiddleware, async (req, res, next) => {
       },
       _sum: { amount: true },
       orderBy: { _sum: { amount: 'desc' } },
-      take: 3,
     });
 
-    const topCategories = categories.map((c) => ({
+    const topCategories = categories.slice(0, 3).map((c) => ({
       category: c.category,
       amount: Number(c._sum.amount),
     }));
@@ -187,8 +261,17 @@ router.get('/spending-dna', authMiddleware, async (req, res, next) => {
       });
     }
 
-    // Calculate spending ratio and variance
+    // Calculate metrics
     const spendingRatio = totalIncome > 0 ? totalExpense / totalIncome : 1;
+    const savingsRate = totalIncome > 0 ? (totalIncome - totalExpense) / totalIncome : 0;
+
+    // Get category percentages
+    const categoryPercentages = {};
+    for (const c of categories) {
+      categoryPercentages[c.category] = totalExpense > 0
+        ? (Number(c._sum.amount) / totalExpense) * 100
+        : 0;
+    }
 
     // Get daily expenses for variance calculation
     const dailyExpenses = await prisma.transaction.groupBy({
@@ -209,38 +292,117 @@ router.get('/spending-dna', authMiddleware, async (req, res, next) => {
       variance = mean > 0 ? Math.sqrt(sumSquares / dailyAmounts.length) / mean : 0;
     }
 
-    // Determine DNA type
-    let dnaType, icon, label, description;
+    // Count unique income sources
+    const incomeSources = await prisma.transaction.groupBy({
+      by: ['category'],
+      where: {
+        userId: req.user.id,
+        date: { gte: startDate, lte: endDate },
+        type: 'income',
+      },
+    });
 
-    if (spendingRatio > 0.9) {
-      dnaType = 'hedonist';
-      icon = '🎉';
-      label = 'Si Hedonist';
-      description = 'Kamu suka menikmati hidup! Tapi hati-hati, jangan sampai kantong jebol ya.';
-    } else if (spendingRatio < 0.5) {
+    // Determine DNA type with priority order
+    let dnaType, label, description;
+
+    // Food categories
+    const foodCategories = ['makan', 'kopi'];
+    const foodPct = foodCategories.reduce((sum, cat) => sum + (categoryPercentages[cat] || 0), 0);
+
+    // Shopping categories
+    const shopCategories = ['belanja online', 'fashion'];
+    const shopPct = shopCategories.reduce((sum, cat) => sum + (categoryPercentages[cat] || 0), 0);
+
+    // Social categories
+    const socialCategories = ['nongkrong', 'hiburan'];
+    const socialPct = socialCategories.reduce((sum, cat) => sum + (categoryPercentages[cat] || 0), 0);
+
+    // Gaming
+    const gamingPct = categoryPercentages['top up game'] || 0;
+
+    // Investment
+    const investPct = categoryPercentages['investasi'] || 0;
+
+    // Priority-based DNA determination
+    if (incomeCount > 2 && incomeSources.length >= 2) {
+      // Multiple income sources
+      dnaType = 'hustler';
+      label = 'Si Hustler';
+      description = 'Cuan dari mana-mana! Kamu punya multiple income streams. Keep grinding!';
+    } else if (investPct >= 10) {
+      // Investor
+      dnaType = 'investor';
+      label = 'Si Investor';
+      description = 'Money makes money! Kamu paham pentingnya investasi untuk masa depan.';
+    } else if (savingsRate >= 0.5) {
+      // Super saver (saves 50%+)
       dnaType = 'saver';
-      icon = '🐿️';
       label = 'Si Penabung';
-      description = 'Kamu jago banget nabung! Tapi sesekali treat yourself juga boleh kok.';
+      description = 'Kamu jago banget nabung! Saving rate kamu di atas 50%. Amazing!';
+    } else if (gamingPct >= 25) {
+      // Gamer
+      dnaType = 'gamer';
+      label = 'Si Gamer';
+      description = 'One more game! Pengeluaran gaming kamu lumayan tinggi. GG!';
+    } else if (foodPct >= 40) {
+      // Foodie
+      dnaType = 'foodie';
+      label = 'Si Foodie';
+      description = 'Perut adalah raja! Kamu suka jajan dan eksplor kuliner. Yummy!';
+    } else if (shopPct >= 35) {
+      // Shopaholic
+      dnaType = 'shopaholic';
+      label = 'Si Shopaholic';
+      description = 'Add to cart adalah mantra hidupmu. Checkout = therapy session!';
+    } else if (socialPct >= 30) {
+      // Social butterfly
+      dnaType = 'social';
+      label = 'Si Gaul';
+      description = 'FOMO is real! Kamu suka nongkrong dan quality time bareng temen.';
+    } else if (spendingRatio >= 0.9 && spendingRatio <= 1.0) {
+      // Survivor (spending almost all but managing)
+      dnaType = 'survivor';
+      label = 'Si Survivor';
+      description = 'Pas-pasan tapi survive! Kamu bisa manage keuangan di kondisi tight.';
+    } else if (spendingRatio > 1.0) {
+      // Hedonist (overspending)
+      dnaType = 'hedonist';
+      label = 'Si Hedonist';
+      description = 'YOLO! Kamu suka enjoy hidup. Tapi hati-hati, jangan sampai bokek ya.';
     } else if (variance > 0.8) {
-      dnaType = 'unpredictable';
-      icon = '🎲';
-      label = 'Si Unpredictable';
-      description = 'Pengeluaranmu naik turun kayak roller coaster. Coba lebih konsisten ya!';
+      // Impulsive (high variance)
+      dnaType = 'impulsive';
+      label = 'Si Impulsif';
+      description = 'Spontan adalah middle name kamu! Pengeluaran naik turun unpredictable.';
+    } else if (expenseCount < 10 && spendingRatio < 0.6) {
+      // Minimalist
+      dnaType = 'minimalist';
+      label = 'Si Minimalis';
+      description = 'Less is more! Kamu gak banyak transaksi dan hemat. Simple life!';
+    } else if (variance < 0.3 && savingsRate >= 0.2) {
+      // Planner (consistent + saves)
+      dnaType = 'planner';
+      label = 'Si Planner';
+      description = 'Semua terencana! Pengeluaranmu konsisten dan kamu tetap bisa nabung.';
     } else {
+      // Balanced (default)
       dnaType = 'balanced';
-      icon = '⚖️';
       label = 'Si Seimbang';
-      description = 'Balance is the key! Kamu udah bagus ngatur keuangan.';
+      description = 'Balance is the key! Kamu udah cukup baik ngatur keuangan.';
     }
 
     res.json({
       has_data: true,
       dna_type: dnaType,
-      icon,
       label,
       description,
       top_categories: topCategories,
+      stats: {
+        spending_ratio: Math.round(spendingRatio * 100),
+        savings_rate: Math.round(savingsRate * 100),
+        variance: Math.round(variance * 100),
+        income_sources: incomeSources.length,
+      },
     });
   } catch (error) {
     next(error);

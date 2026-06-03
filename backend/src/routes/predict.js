@@ -428,7 +428,56 @@ router.get('/insights', authMiddleware, async (req, res, next) => {
 
     const insights = [];
 
-    // This month by category
+    // Get this month income & expense
+    const thisMonthTotals = await prisma.transaction.groupBy({
+      by: ['type'],
+      where: {
+        userId: req.user.id,
+        date: { gte: thisMonthStart, lte: thisMonthEnd },
+      },
+      _sum: { amount: true },
+    });
+
+    let thisMonthIncome = 0;
+    let thisMonthExpense = 0;
+    for (const t of thisMonthTotals) {
+      if (t.type === 'income') thisMonthIncome = Number(t._sum.amount || 0);
+      else thisMonthExpense = Number(t._sum.amount || 0);
+    }
+
+    // === INSIGHT 1: Savings Rate Warning ===
+    if (thisMonthIncome > 0) {
+      const savingsRate = ((thisMonthIncome - thisMonthExpense) / thisMonthIncome) * 100;
+
+      if (savingsRate < 0) {
+        insights.push({
+          type: 'danger',
+          message: `Pengeluaran melebihi pemasukan! Kamu minus Rp ${Math.abs(thisMonthIncome - thisMonthExpense).toLocaleString('id-ID')}`,
+          priority: 1,
+        });
+      } else if (savingsRate < 10) {
+        insights.push({
+          type: 'warning',
+          message: `Saving rate kamu cuma ${Math.round(savingsRate)}%. Idealnya minimal 20%`,
+          priority: 2,
+        });
+      } else if (savingsRate >= 30) {
+        insights.push({
+          type: 'success',
+          message: `Keren! Saving rate kamu ${Math.round(savingsRate)}%. Keep it up!`,
+          priority: 3,
+        });
+      }
+    } else if (thisMonthExpense > 0) {
+      // Has expense but no income
+      insights.push({
+        type: 'warning',
+        message: 'Ada pengeluaran tapi belum ada pemasukan tercatat bulan ini',
+        priority: 1,
+      });
+    }
+
+    // === INSIGHT 2: Category Comparison (with nominal threshold) ===
     const thisMonth = await prisma.transaction.groupBy({
       by: ['category'],
       where: {
@@ -439,7 +488,6 @@ router.get('/insights', authMiddleware, async (req, res, next) => {
       _sum: { amount: true },
     });
 
-    // Last month by category
     const lastMonth = await prisma.transaction.groupBy({
       by: ['category'],
       where: {
@@ -460,70 +508,126 @@ router.get('/insights', authMiddleware, async (req, res, next) => {
       lastMonthMap[c.category] = Number(c._sum.amount);
     }
 
-    // Compare categories
+    // Only warn if increase is significant in NOMINAL (>100k) AND percentage (>25%)
     for (const [category, thisTotal] of Object.entries(thisMonthMap)) {
       const lastTotal = lastMonthMap[category] || 0;
-      if (lastTotal > 0) {
-        const change = ((thisTotal - lastTotal) / lastTotal) * 100;
-        if (change > 30) {
-          insights.push({
-            type: 'warning',
-            message: `Pengeluaran ${category} kamu naik ${Math.round(change)}% dari bulan lalu`,
-            category,
-            change_percent: Math.round(change * 10) / 10,
-          });
-        } else if (change < -20) {
-          insights.push({
-            type: 'success',
-            message: `Kamu berhasil hemat ${Math.abs(Math.round(change))}% untuk ${category}`,
-            category,
-            change_percent: Math.round(change * 10) / 10,
-          });
-        }
+      const difference = thisTotal - lastTotal;
+      const changePercent = lastTotal > 0 ? (difference / lastTotal) * 100 : 0;
+
+      // Significant increase: >100k AND >25%
+      if (difference > 100000 && changePercent > 25) {
+        insights.push({
+          type: 'warning',
+          message: `${category} naik Rp ${difference.toLocaleString('id-ID')} (+${Math.round(changePercent)}%) dari bulan lalu`,
+          category,
+          difference,
+          change_percent: Math.round(changePercent),
+          priority: 4,
+        });
+      }
+      // Significant savings: >100k AND >20%
+      else if (difference < -100000 && changePercent < -20) {
+        insights.push({
+          type: 'success',
+          message: `Hemat ${category} Rp ${Math.abs(difference).toLocaleString('id-ID')} dari bulan lalu!`,
+          category,
+          difference,
+          change_percent: Math.round(changePercent),
+          priority: 5,
+        });
       }
     }
 
-    // Total comparison
+    // === INSIGHT 3: Budget Goals Check ===
+    const targetMonth = month || `${thisMonthStart.getFullYear()}-${String(thisMonthStart.getMonth() + 1).padStart(2, '0')}`;
+    const budgetGoals = await prisma.budgetGoal.findMany({
+      where: {
+        userId: req.user.id,
+        month: targetMonth,
+      },
+    });
+
+    for (const goal of budgetGoals) {
+      const spent = thisMonthMap[goal.category] || 0;
+      const limit = Number(goal.budgetLimit);
+      const percentage = (spent / limit) * 100;
+
+      if (percentage >= 100) {
+        insights.push({
+          type: 'danger',
+          message: `Budget ${goal.category} sudah habis! (${Math.round(percentage)}%)`,
+          category: goal.category,
+          priority: 2,
+        });
+      } else if (percentage >= 80) {
+        insights.push({
+          type: 'warning',
+          message: `Budget ${goal.category} hampir habis (${Math.round(percentage)}%)`,
+          category: goal.category,
+          priority: 3,
+        });
+      }
+    }
+
+    // === INSIGHT 4: Total Comparison ===
     const thisTotal = Object.values(thisMonthMap).reduce((a, b) => a + b, 0);
     const lastTotal = Object.values(lastMonthMap).reduce((a, b) => a + b, 0);
 
     if (lastTotal > 0) {
-      const totalChange = ((thisTotal - lastTotal) / lastTotal) * 100;
-      if (totalChange < -10) {
+      const totalDiff = thisTotal - lastTotal;
+      const totalChange = (totalDiff / lastTotal) * 100;
+
+      if (totalDiff < -200000) {
         insights.push({
           type: 'success',
-          message: `Total pengeluaran kamu turun ${Math.abs(Math.round(totalChange))}% dari bulan lalu!`,
-          change_percent: Math.round(totalChange * 10) / 10,
+          message: `Total spending turun Rp ${Math.abs(totalDiff).toLocaleString('id-ID')} dari bulan lalu!`,
+          change_percent: Math.round(totalChange),
+          priority: 4,
         });
-      } else if (totalChange > 20) {
+      } else if (totalDiff > 500000) {
         insights.push({
           type: 'warning',
-          message: `Total pengeluaran kamu naik ${Math.round(totalChange)}% dari bulan lalu`,
-          change_percent: Math.round(totalChange * 10) / 10,
+          message: `Total spending naik Rp ${totalDiff.toLocaleString('id-ID')} dari bulan lalu`,
+          change_percent: Math.round(totalChange),
+          priority: 3,
         });
       }
     }
 
+    // === INSIGHT 5: New User / No Data ===
     if (insights.length === 0) {
-      insights.push({
-        type: 'info',
-        message: 'Terus catat transaksimu untuk mendapatkan insights yang lebih akurat!',
-      });
+      if (thisMonthExpense === 0 && thisMonthIncome === 0) {
+        insights.push({
+          type: 'info',
+          message: 'Mulai catat transaksimu untuk mendapatkan insights!',
+          priority: 10,
+        });
+      } else {
+        insights.push({
+          type: 'info',
+          message: 'Pengeluaranmu bulan ini cukup stabil. Keep it up!',
+          priority: 10,
+        });
+      }
     }
 
-    res.json({ insights });
+    // Sort by priority
+    insights.sort((a, b) => (a.priority || 10) - (b.priority || 10));
+
+    res.json({ insights: insights.slice(0, 5) }); // Max 5 insights
   } catch (error) {
     next(error);
   }
 });
 
 // GET /predict/health-score
+// Based on 50/30/20 rule: 50% Needs, 30% Wants, 20% Savings
 router.get('/health-score', authMiddleware, async (req, res, next) => {
   try {
     const { month } = req.query;
     const { startDate, endDate } = parseMonth(month);
 
-    // Get income and expense
+    // Get income and expense for the month
     const totals = await prisma.transaction.groupBy({
       by: ['type'],
       where: {
@@ -541,43 +645,149 @@ router.get('/health-score', authMiddleware, async (req, res, next) => {
     }
 
     const checks = [];
-    let score = 50; // Base score
+    let score = 0;
 
-    // Check 1: Income vs Expense
-    if (income > expense) {
-      checks.push({ status: 'good', message: 'Pengeluaran < Pemasukan' });
+    // === CHECK 1: Savings Rate (Target: 20%+) ===
+    // Most important check - worth 30 points
+    const savingsRate = income > 0 ? ((income - expense) / income) * 100 : 0;
+
+    if (savingsRate >= 20) {
+      checks.push({
+        status: 'good',
+        message: `Saving rate ${Math.round(savingsRate)}% - Target 20% tercapai!`,
+        detail: 'savings_rate',
+      });
+      score += 30;
+    } else if (savingsRate >= 10) {
+      checks.push({
+        status: 'info',
+        message: `Saving rate ${Math.round(savingsRate)}% - Hampir target 20%`,
+        detail: 'savings_rate',
+      });
       score += 20;
-    } else if (income > 0) {
-      checks.push({ status: 'warning', message: 'Pengeluaran > Pemasukan' });
-      score -= 10;
+    } else if (savingsRate > 0) {
+      checks.push({
+        status: 'warning',
+        message: `Saving rate ${Math.round(savingsRate)}% - Coba naikkan ke 20%`,
+        detail: 'savings_rate',
+      });
+      score += 10;
     } else {
-      checks.push({ status: 'info', message: 'Belum ada data pemasukan' });
+      checks.push({
+        status: 'danger',
+        message: income > 0 ? 'Pengeluaran melebihi pemasukan!' : 'Belum ada data pemasukan',
+        detail: 'savings_rate',
+      });
+      score += 0;
     }
 
-    // Check 2: Essential spending ratio
-    const essentialCategories = ['makan', 'transport', 'kos/kontrakan', 'tagihan'];
-    const essentialSpending = await prisma.transaction.aggregate({
+    // === CHECK 2: Needs vs Wants Ratio (Target: 50% needs, 30% wants) ===
+    // Worth 25 points
+    const needsCategories = ['makan', 'transport', 'kos/kontrakan', 'tagihan', 'kesehatan', 'edukasi'];
+    const wantsCategories = ['kopi', 'hiburan', 'nongkrong', 'fashion', 'belanja online', 'top up game', 'skincare'];
+
+    const needsSpending = await prisma.transaction.aggregate({
       where: {
         userId: req.user.id,
         date: { gte: startDate, lte: endDate },
         type: 'expense',
-        category: { in: essentialCategories },
+        category: { in: needsCategories },
       },
       _sum: { amount: true },
     });
 
+    const wantsSpending = await prisma.transaction.aggregate({
+      where: {
+        userId: req.user.id,
+        date: { gte: startDate, lte: endDate },
+        type: 'expense',
+        category: { in: wantsCategories },
+      },
+      _sum: { amount: true },
+    });
+
+    const needsAmount = Number(needsSpending._sum.amount || 0);
+    const wantsAmount = Number(wantsSpending._sum.amount || 0);
+    const needsRatio = income > 0 ? (needsAmount / income) * 100 : 0;
+    const wantsRatio = income > 0 ? (wantsAmount / income) * 100 : 0;
+
     if (expense > 0) {
-      const essentialRatio = (Number(essentialSpending._sum.amount || 0) / expense) * 100;
-      if (essentialRatio >= 50) {
-        checks.push({ status: 'good', message: 'Pengeluaran primer terkontrol' });
+      // Check if needs are within 50% of income
+      if (needsRatio <= 55 && needsRatio > 0) {
+        checks.push({
+          status: 'good',
+          message: `Kebutuhan ${Math.round(needsRatio)}% dari income - Ideal!`,
+          detail: 'needs_ratio',
+        });
         score += 15;
-      } else {
-        checks.push({ status: 'warning', message: 'Pengeluaran non-primer cukup tinggi' });
+      } else if (needsRatio <= 70) {
+        checks.push({
+          status: 'info',
+          message: `Kebutuhan ${Math.round(needsRatio)}% dari income`,
+          detail: 'needs_ratio',
+        });
+        score += 10;
+      } else if (needsRatio > 0) {
+        checks.push({
+          status: 'warning',
+          message: `Kebutuhan ${Math.round(needsRatio)}% - Coba tekan di bawah 50%`,
+          detail: 'needs_ratio',
+        });
         score += 5;
+      }
+
+      // Check if wants are within 30% of income
+      if (wantsRatio <= 30) {
+        checks.push({
+          status: 'good',
+          message: `Keinginan ${Math.round(wantsRatio)}% dari income - Terkontrol!`,
+          detail: 'wants_ratio',
+        });
+        score += 10;
+      } else if (wantsRatio <= 40) {
+        checks.push({
+          status: 'info',
+          message: `Keinginan ${Math.round(wantsRatio)}% - Sedikit di atas target 30%`,
+          detail: 'wants_ratio',
+        });
+        score += 5;
+      } else {
+        checks.push({
+          status: 'warning',
+          message: `Keinginan ${Math.round(wantsRatio)}% - Coba kurangi ke 30%`,
+          detail: 'wants_ratio',
+        });
+        score += 0;
       }
     }
 
-    // Check 3: Transaction consistency
+    // === CHECK 3: Expense vs Income ===
+    // Worth 20 points
+    if (income > expense && income > 0) {
+      checks.push({
+        status: 'good',
+        message: 'Pengeluaran lebih kecil dari pemasukan',
+        detail: 'income_vs_expense',
+      });
+      score += 20;
+    } else if (income > 0 && expense <= income * 1.1) {
+      checks.push({
+        status: 'warning',
+        message: 'Pengeluaran hampir sama dengan pemasukan',
+        detail: 'income_vs_expense',
+      });
+      score += 10;
+    } else if (income > 0) {
+      checks.push({
+        status: 'danger',
+        message: 'Pengeluaran melebihi pemasukan!',
+        detail: 'income_vs_expense',
+      });
+      score += 0;
+    }
+
+    // === CHECK 4: Transaction Tracking ===
+    // Worth 15 points
     const transactionCount = await prisma.transaction.count({
       where: {
         userId: req.user.id,
@@ -585,27 +795,78 @@ router.get('/health-score', authMiddleware, async (req, res, next) => {
       },
     });
 
-    if (transactionCount >= 15) {
-      checks.push({ status: 'good', message: 'Rutin mencatat transaksi' });
+    if (transactionCount >= 20) {
+      checks.push({
+        status: 'good',
+        message: `${transactionCount} transaksi tercatat - Rajin!`,
+        detail: 'tracking',
+      });
       score += 15;
-    } else if (transactionCount >= 5) {
-      checks.push({ status: 'info', message: 'Pencatatan cukup konsisten' });
+    } else if (transactionCount >= 10) {
+      checks.push({
+        status: 'info',
+        message: `${transactionCount} transaksi tercatat`,
+        detail: 'tracking',
+      });
       score += 10;
+    } else if (transactionCount >= 5) {
+      checks.push({
+        status: 'info',
+        message: `${transactionCount} transaksi - Coba lebih rutin catat`,
+        detail: 'tracking',
+      });
+      score += 5;
     } else {
-      checks.push({ status: 'warning', message: 'Perlu lebih sering mencatat' });
+      checks.push({
+        status: 'warning',
+        message: 'Perlu lebih sering mencatat transaksi',
+        detail: 'tracking',
+      });
+      score += 0;
     }
 
-    // Clamp score
-    score = Math.max(0, Math.min(100, score));
+    // === CHECK 5: Has Investment (Bonus) ===
+    // Worth 10 points
+    const hasInvestment = await prisma.transaction.findFirst({
+      where: {
+        userId: req.user.id,
+        date: { gte: startDate, lte: endDate },
+        category: 'investasi',
+        type: 'expense',
+      },
+    });
+
+    if (hasInvestment) {
+      checks.push({
+        status: 'good',
+        message: 'Ada alokasi investasi bulan ini!',
+        detail: 'investment',
+      });
+      score += 10;
+    }
+
+    // Clamp score to 100
+    score = Math.min(100, score);
 
     // Determine label
     let label;
-    if (score >= 80) label = 'SANGAT BAIK';
-    else if (score >= 60) label = 'BAIK';
+    if (score >= 80) label = 'SANGAT SEHAT';
+    else if (score >= 60) label = 'SEHAT';
     else if (score >= 40) label = 'CUKUP';
-    else label = 'PERLU PERHATIAN';
+    else if (score >= 20) label = 'PERLU PERBAIKAN';
+    else label = 'KRITIS';
 
-    res.json({ score, label, checks });
+    res.json({
+      score,
+      label,
+      checks,
+      breakdown: {
+        savings_rate: Math.round(savingsRate),
+        needs_ratio: Math.round(needsRatio),
+        wants_ratio: Math.round(wantsRatio),
+        ideal: '50% Needs, 30% Wants, 20% Savings',
+      },
+    });
   } catch (error) {
     next(error);
   }
