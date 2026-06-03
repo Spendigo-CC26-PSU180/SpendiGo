@@ -29,19 +29,19 @@ export default function InsightsPageContent() {
       </div>
 
       {/* Row 1: Spending DNA + Broke Date (not affected by month) */}
-      <div className="grid lg:grid-cols-2 gap-4 sm:gap-6 mb-4 sm:mb-6">
+      <div className="grid lg:grid-cols-2 gap-4 sm:gap-6 mb-4 sm:mb-6 items-start">
         <SpendingDNA />
         <BrokeDate />
       </div>
 
       {/* Row 2: Prediction + Health Score */}
-      <div className="grid lg:grid-cols-2 gap-4 sm:gap-6 mb-4 sm:mb-6">
+      <div className="grid lg:grid-cols-2 gap-4 sm:gap-6 mb-4 sm:mb-6 items-start">
         <PredictionCard />
         <HealthScore month={selectedMonth} />
       </div>
 
       {/* Row 3: 3-Month Chart + What-If Simulator (not affected by month) */}
-      <div className="grid lg:grid-cols-2 gap-4 sm:gap-6 mb-4 sm:mb-6">
+      <div className="grid lg:grid-cols-2 gap-4 sm:gap-6 mb-4 sm:mb-6 items-start">
         <ThreeMonthChart />
         <WhatIfSimulator />
       </div>
@@ -52,7 +52,7 @@ export default function InsightsPageContent() {
       </div>
 
       {/* Row 4: Budget Goals + Category Comparison */}
-      <div className="grid lg:grid-cols-2 gap-4 sm:gap-6">
+      <div className="grid lg:grid-cols-2 gap-4 sm:gap-6 items-start">
         <BudgetGoals month={selectedMonth} />
         <CategoryComparison month={selectedMonth} />
       </div>
