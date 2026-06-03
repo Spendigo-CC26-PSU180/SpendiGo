@@ -28,33 +28,35 @@ export default function InsightsPageContent() {
         <MonthPicker selectedMonth={selectedMonth} onChange={setSelectedMonth} />
       </div>
 
-      {/* Row 1: Spending DNA + Broke Date (not affected by month) */}
-      <div className="grid lg:grid-cols-2 gap-4 sm:gap-6 mb-4 sm:mb-6 items-start">
-        <SpendingDNA />
-        <BrokeDate />
-      </div>
-
-      {/* Row 2: Prediction + Health Score */}
-      <div className="grid lg:grid-cols-2 gap-4 sm:gap-6 mb-4 sm:mb-6 items-start">
-        <PredictionCard />
-        <HealthScore month={selectedMonth} />
-      </div>
-
-      {/* Row 3: 3-Month Chart + What-If Simulator (not affected by month) */}
-      <div className="grid lg:grid-cols-2 gap-4 sm:gap-6 mb-4 sm:mb-6 items-start">
-        <ThreeMonthChart />
-        <WhatIfSimulator />
-      </div>
-
-      {/* Insights Cards */}
-      <div className="mb-4 sm:mb-6">
-        <InsightCards month={selectedMonth} />
-      </div>
-
-      {/* Row 4: Budget Goals + Category Comparison */}
-      <div className="grid lg:grid-cols-2 gap-4 sm:gap-6 items-start">
-        <BudgetGoals month={selectedMonth} />
-        <CategoryComparison month={selectedMonth} />
+      {/* Masonry layout - cards flow naturally without big gaps */}
+      <div className="columns-1 lg:columns-2 gap-4 sm:gap-6 space-y-4 sm:space-y-6">
+        <div className="break-inside-avoid">
+          <SpendingDNA />
+        </div>
+        <div className="break-inside-avoid">
+          <BrokeDate />
+        </div>
+        <div className="break-inside-avoid">
+          <PredictionCard />
+        </div>
+        <div className="break-inside-avoid">
+          <HealthScore month={selectedMonth} />
+        </div>
+        <div className="break-inside-avoid">
+          <ThreeMonthChart />
+        </div>
+        <div className="break-inside-avoid">
+          <WhatIfSimulator />
+        </div>
+        <div className="break-inside-avoid">
+          <InsightCards month={selectedMonth} />
+        </div>
+        <div className="break-inside-avoid">
+          <BudgetGoals month={selectedMonth} />
+        </div>
+        <div className="break-inside-avoid">
+          <CategoryComparison month={selectedMonth} />
+        </div>
       </div>
     </div>
   );
