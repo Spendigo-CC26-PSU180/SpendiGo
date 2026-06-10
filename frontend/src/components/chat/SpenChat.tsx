@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from 'react';
-import { Send, Plus, BarChart3, Check, Loader2 } from 'lucide-react';
+import { Send, Plus, BarChart3, Check, Loader2, TrendingUp } from 'lucide-react';
 import { chatApi, transactionsApi, type ChatMessage, type ActionCard } from '../../lib/api';
 
 const quickPrompts = [
@@ -81,6 +81,8 @@ export default function SpenChat() {
       window.location.href = '/transactions?action=add';
     } else if (action.type === 'view_report') {
       window.location.href = '/dashboard';
+    } else if (action.type === 'view_predictions') {
+      window.location.href = '/insights';
     } else if (action.type === 'save_transaction' && action.data) {
       setSavingTransaction(actionKey);
       try {
@@ -198,6 +200,8 @@ export default function SpenChat() {
                             <Plus className="w-4 h-4 text-primary-500" />
                           ) : action.type === 'view_report' ? (
                             <BarChart3 className="w-4 h-4 text-primary-500" />
+                          ) : action.type === 'view_predictions' ? (
+                            <TrendingUp className="w-4 h-4 text-primary-500" />
                           ) : (
                             <Plus className="w-4 h-4 text-primary-500" />
                           )}

@@ -55,21 +55,25 @@ router.get('/summary', authMiddleware, async (req, res, next) => {
 
     const totalBalance = Number(totalIncome - totalExpense);
 
-    // Get avg daily expense from LAST 30 DAYS
-    const thirtyDaysAgo = new Date();
-    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
-    thirtyDaysAgo.setHours(0, 0, 0, 0);
-
-    const recentExpense = await prisma.transaction.aggregate({
-      where: {
-        userId: req.user.id,
-        type: 'expense',
-        date: { gte: thirtyDaysAgo },
-      },
-      _sum: { amount: true },
+    // Get avg daily expense from FIRST TRANSACTION to TODAY
+    // This way, days without spending will lower the average
+    const firstTransaction = await prisma.transaction.findFirst({
+      where: { userId: req.user.id, type: 'expense' },
+      orderBy: { date: 'asc' },
+      select: { date: true },
     });
 
-    const avgDailyExpense = Number(recentExpense._sum.amount || 0) / 30;
+    let avgDailyExpense = 0;
+    if (firstTransaction) {
+      const today = new Date();
+      today.setHours(23, 59, 59, 999);
+      const firstDate = new Date(firstTransaction.date);
+      firstDate.setHours(0, 0, 0, 0);
+
+      // Calculate days from first expense to today (inclusive)
+      const daysSinceFirst = Math.max(1, Math.ceil((today - firstDate) / (1000 * 60 * 60 * 24)));
+      avgDailyExpense = Number(totalExpense) / daysSinceFirst;
+    }
 
     res.json({
       // Monthly stats (for current month display)
@@ -86,7 +90,7 @@ router.get('/summary', authMiddleware, async (req, res, next) => {
       total_expense: Number(monthlyExpense),
       balance: totalBalance,
 
-      // Average from last 30 days
+      // Average from first transaction to today
       avg_daily_expense: Math.round(avgDailyExpense),
     });
   } catch (error) {

@@ -285,46 +285,53 @@ router.get('/next-three-months', authMiddleware, async (req, res, next) => {
 router.get('/broke-date', authMiddleware, async (req, res, next) => {
   try {
     const today = new Date();
-    const thirtyDaysAgo = new Date(today);
-    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
 
-    // Get all transactions
-    const allTransactions = await prisma.transaction.findMany({
-      where: { userId: req.user.id },
+    // Get first expense transaction to calculate days
+    const firstExpense = await prisma.transaction.findFirst({
+      where: { userId: req.user.id, type: 'expense' },
+      orderBy: { date: 'asc' },
+      select: { date: true },
     });
 
-    if (allTransactions.length === 0) {
+    if (!firstExpense) {
       return res.json({
         has_prediction: false,
         message: 'Belum cukup data untuk prediksi. Mulai catat transaksi kamu!',
       });
     }
 
-    // Calculate balance
+    // Get all transactions
+    const allTransactions = await prisma.transaction.findMany({
+      where: { userId: req.user.id },
+    });
+
+    // Calculate balance and total expense
     let totalIncome = 0;
     let totalExpense = 0;
-    const recentExpenses = {};
 
     for (const t of allTransactions) {
       if (t.type === 'income') {
         totalIncome += Number(t.amount);
       } else {
         totalExpense += Number(t.amount);
-        if (t.date >= thirtyDaysAgo) {
-          const dateKey = t.date.toISOString().split('T')[0];
-          recentExpenses[dateKey] = (recentExpenses[dateKey] || 0) + Number(t.amount);
-        }
       }
     }
 
     const currentBalance = totalIncome - totalExpense;
-    const totalRecentExpense = Object.values(recentExpenses).reduce((a, b) => a + b, 0);
-    const avgDailyExpense = totalRecentExpense / 30;
+
+    // Calculate avg daily expense from first expense to today
+    const firstDate = new Date(firstExpense.date);
+    firstDate.setHours(0, 0, 0, 0);
+    const todayEnd = new Date(today);
+    todayEnd.setHours(23, 59, 59, 999);
+
+    const daysSinceFirst = Math.max(1, Math.ceil((todayEnd - firstDate) / (1000 * 60 * 60 * 24)));
+    const avgDailyExpense = totalExpense / daysSinceFirst;
 
     if (avgDailyExpense <= 0) {
       return res.json({
         has_prediction: false,
-        message: 'Belum ada data pengeluaran 30 hari terakhir.',
+        message: 'Belum ada data pengeluaran.',
       });
     }
 
@@ -342,13 +349,12 @@ router.get('/broke-date', authMiddleware, async (req, res, next) => {
       warningLevel = 'safe';
     }
 
-    // Get top spending categories for tips
+    // Get top spending categories for tips (all-time)
     const categoryTotals = await prisma.transaction.groupBy({
       by: ['category'],
       where: {
         userId: req.user.id,
         type: 'expense',
-        date: { gte: thirtyDaysAgo },
       },
       _sum: { amount: true },
       orderBy: { _sum: { amount: 'desc' } },

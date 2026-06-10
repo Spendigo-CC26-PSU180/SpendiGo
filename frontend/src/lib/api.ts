@@ -132,7 +132,7 @@ export interface ChatMessage {
 }
 
 export interface ActionCard {
-  type: 'add_transaction' | 'view_report' | 'save_transaction';
+  type: 'add_transaction' | 'view_report' | 'save_transaction' | 'view_predictions';
   label: string;
   data?: {
     amount?: number;
